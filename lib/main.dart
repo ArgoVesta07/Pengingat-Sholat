@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:ui'; // Diperlukan untuk ImageFilter.blur
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:adhan/adhan.dart';
 import 'package:intl/intl.dart';
 import 'package:geolocator/geolocator.dart';
@@ -42,6 +44,8 @@ final Map<String, Map<String, String>> _translations = {
     'gps_failed': 'Gagal mengambil GPS',
     'offline_notice': 'Anda sedang offline. Menampilkan lokasi tersimpan.',
     'search_offline': 'Koneksi internet diperlukan untuk mencari kota baru.',
+    'reminder_text': 'Jaga sholat tepat waktu. "Sesungguhnya sholat itu adalah kewajiban yang ditentukan waktunya atas orang-orang yang beriman."',
+    'close': 'Tutup',
   },
   'en': {
     'app_title': 'PRAYER TIMES',
@@ -70,6 +74,8 @@ final Map<String, Map<String, String>> _translations = {
     'gps_failed': 'Failed to get GPS location',
     'offline_notice': 'You are offline. Showing saved location.',
     'search_offline': 'Internet connection required to search new cities.',
+    'reminder_text': 'Keep your prayers punctual. "Indeed, prayer has been enjoined upon the believers at fixed times."',
+    'close': 'Close',
   },
   'ja': {
     'app_title': '礼 拝 時 間',
@@ -98,6 +104,8 @@ final Map<String, Map<String, String>> _translations = {
     'gps_failed': 'GPS情報の取得に失敗しました',
     'offline_notice': 'オフラインです。保存された位置情報を表示しています。',
     'search_offline': '新しい都市の検索にはインターネット接続が必要です。',
+    'reminder_text': '礼拝の時間を守りましょう。"本当に、礼拝は信仰する者たちに定められた時に行うべき義務である。"',
+    'close': '閉じる',
   },
 };
 
@@ -116,11 +124,8 @@ class _MyAppState extends State<MyApp> {
   @override
   void initState() {
     super.initState();
-    // Load Tema tersimpan
     final savedTheme = widget.prefs.getInt('theme_mode') ?? 0;
     _themeMode = ThemeMode.values[savedTheme];
-
-    // Load Bahasa tersimpan
     _selectedLanguageCode = widget.prefs.getString('language_code');
   }
 
@@ -236,6 +241,7 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
   String _nextPrayerKey = 'fajr';
   bool _isNextDay = false;
   bool _isLoadingGps = false;
+  DateTime _lastCalculatedDate = DateTime.now();
 
   @override
   void initState() {
@@ -276,11 +282,21 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
   void _calculatePrayers() {
     final params = _selectedMethod.getParameters();
     _prayerTimes = PrayerTimes.today(_currentCoordinates, params);
+    _lastCalculatedDate = DateTime.now();
     _updateCountdown();
   }
 
   void _updateCountdown() {
     final now = DateTime.now();
+
+    // Reset perhitungan otomatis jika hari berganti lewat tengah malam
+    if (now.day != _lastCalculatedDate.day ||
+        now.month != _lastCalculatedDate.month ||
+        now.year != _lastCalculatedDate.year) {
+      _calculatePrayers();
+      return;
+    }
+
     final next = _prayerTimes.nextPrayer();
 
     if (next == Prayer.none) {
@@ -320,78 +336,295 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
     }
   }
 
-  void _openSearchDialog() {
-    showDialog(
+  Prayer _prayerFromKey(String key) {
+    switch (key) {
+      case 'fajr': return Prayer.fajr;
+      case 'dhuhr': return Prayer.dhuhr;
+      case 'asr': return Prayer.asr;
+      case 'maghrib': return Prayer.maghrib;
+      case 'isha': return Prayer.isha;
+      default: return Prayer.fajr;
+    }
+  }
+
+  // --- POPUP INTERAKTIF BERSAMA EFEK BLUR (LONG PRESS) ---
+  void _showPrayerDetailPopup({
+    required String prayerName,
+    required DateTime prayerTime,
+    bool isCountdown = false,
+  }) {
+    final formattedTime = DateFormat.Hm().format(prayerTime);
+
+    showGeneralDialog(
       context: context,
-      builder: (context) => _CitySearchDialog(
-        t: _t,
-        onCitySelected: (String name, double lat, double lng) {
-          setState(() {
-            _currentCityName = name;
-            _currentCoordinates = Coordinates(lat, lng);
-            _calculatePrayers();
-          });
-          _saveLocation(name, lat, lng);
-          Navigator.pop(context);
-        },
-      ),
+      barrierDismissible: true,
+      barrierLabel: 'Dismiss',
+      barrierColor: Colors.black.withAlpha((0.3 * 255).round()),
+      transitionDuration: const Duration(milliseconds: 250),
+      pageBuilder: (context, anim1, anim2) {
+        final isDark = Theme.of(context).brightness == Brightness.dark;
+        final primaryTextColor = isDark ? Colors.white : const Color(0xFF1C1C1E);
+        final iconColor = primaryTextColor;
+        final iconBg = isDark ? Colors.white12 : Colors.black12;
+
+        // Distinct accent for countdown popup (avoid default purple)
+        final countdownAccent = isDark ? Colors.tealAccent.shade100 : const Color(0xFF0A84FF);
+
+        return BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+          child: Center(
+            child: Material(
+              color: Colors.transparent,
+              child: Container(
+                width: isCountdown ? MediaQuery.of(context).size.width * 0.9 : MediaQuery.of(context).size.width * 0.8,
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: isDark
+                      ? const Color(0xFF2C2C2E).withAlpha((0.85 * 255).round())
+                      : Colors.white.withAlpha((0.85 * 255).round()),
+                  borderRadius: BorderRadius.circular(isCountdown ? 20 : 24),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withAlpha((0.15 * 255).round()),
+                      blurRadius: 25,
+                      offset: const Offset(0, 10),
+                    ),
+                  ],
+                  border: Border.all(
+                    color: isDark
+                        ? Colors.white.withAlpha((0.1 * 255).round())
+                        : Colors.black.withAlpha((0.05 * 255).round()),
+                  ),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (isCountdown) ...[
+                      Text(
+                        _formatDuration(_timeToNextPrayer),
+                        style: TextStyle(
+                          fontSize: 52,
+                          fontWeight: FontWeight.w300,
+                          color: countdownAccent,
+                          letterSpacing: 2,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        prayerName.toUpperCase(),
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: primaryTextColor,
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                    ] else ...[
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: iconBg,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.access_time_filled_rounded,
+                          size: isCountdown ? 48 : 40,
+                          color: iconColor,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        prayerName,
+                        style: TextStyle(
+                          fontSize: isCountdown ? 26 : 22,
+                          fontWeight: FontWeight.bold,
+                          color: isDark ? Colors.white : Colors.black87,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Waktu: $formattedTime',
+                        style: TextStyle(
+                          fontSize: isCountdown ? 20 : 16,
+                          fontWeight: FontWeight.w700,
+                          color: isCountdown ? countdownAccent : primaryTextColor,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        _t('reminder_text'),
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 13,
+                          height: 1.4,
+                          color: isDark ? Colors.white70 : Colors.black54,
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                    ],
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: () => Navigator.pop(context),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: isDark ? Colors.grey[300] : const Color(0xFF1C1C1E),
+                          foregroundColor: isDark ? Colors.black : Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          elevation: 0,
+                        ),
+                        child: Text(
+                          _t('close'),
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+      transitionBuilder: (context, anim1, anim2, child) {
+        return Transform.scale(
+          scale: Curves.easeOutBack.transform(anim1.value),
+          child: FadeTransition(
+            opacity: anim1,
+            child: child,
+          ),
+        );
+      },
+    );
+  }
+
+  void _openSearchDialog() {
+    showGeneralDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'Dismiss',
+      barrierColor: Colors.black.withAlpha((0.3 * 255).round()),
+      transitionDuration: const Duration(milliseconds: 250),
+      pageBuilder: (context, anim1, anim2) {
+        return BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+          child: Center(
+            child: Material(
+              color: Colors.transparent,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 420),
+                child: _CitySearchDialog(
+                  t: _t,
+                  currentLanguageCode: widget.currentLanguageCode,
+                  onCitySelected: (String name, double lat, double lng) {
+                    setState(() {
+                      _currentCityName = name;
+                      _currentCoordinates = Coordinates(lat, lng);
+                      _calculatePrayers();
+                    });
+                    _saveLocation(name, lat, lng);
+                    Navigator.pop(context);
+                  },
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+      transitionBuilder: (context, anim1, anim2, child) {
+        return Transform.scale(
+          scale: Curves.easeOutBack.transform(anim1.value),
+          child: FadeTransition(
+            opacity: anim1,
+            child: child,
+          ),
+        );
+      },
     );
   }
 
   void _openSettingsBottomSheet() {
-    showModalBottomSheet(
+    showGeneralDialog(
       context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) {
-        return Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                _t('settings'),
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 20),
-              Text(_t('theme'), style: const TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 8),
-              SegmentedButton<ThemeMode>(
-                segments: [
-                  ButtonSegment(value: ThemeMode.system, label: Text(_t('system_default'))),
-                  ButtonSegment(value: ThemeMode.light, label: Text(_t('light'))),
-                  ButtonSegment(value: ThemeMode.dark, label: Text(_t('dark'))),
-                ],
-                selected: {widget.currentThemeMode},
-                onSelectionChanged: (Set<ThemeMode> newSelection) {
-                  widget.onThemeChanged(newSelection.first);
-                  Navigator.pop(context);
-                },
-              ),
-              const SizedBox(height: 20),
-              Text(_t('language'), style: const TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 8),
-              DropdownButtonFormField<String?>(
-                value: widget.currentLanguageCode,
-                decoration: InputDecoration(
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+      barrierDismissible: true,
+      barrierLabel: 'Dismiss',
+      barrierColor: Colors.black.withAlpha((0.3 * 255).round()),
+      transitionDuration: const Duration(milliseconds: 250),
+      pageBuilder: (context, anim1, anim2) {
+        final isDark = Theme.of(context).brightness == Brightness.dark;
+
+        return BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+          child: Center(
+            child: Material(
+              color: Colors.transparent,
+              child: Container(
+                width: MediaQuery.of(context).size.width * 0.9,
+                constraints: const BoxConstraints(maxWidth: 420),
+                padding: const EdgeInsets.all(24.0),
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF2C2C2E).withAlpha((0.95 * 255).round()) : Colors.white,
+                  borderRadius: BorderRadius.circular(16),
                 ),
-                items: [
-                  DropdownMenuItem(value: null, child: Text(_t('auto_device'))),
-                  const DropdownMenuItem(value: 'id', child: Text('Bahasa Indonesia')),
-                  const DropdownMenuItem(value: 'en', child: Text('English')),
-                  const DropdownMenuItem(value: 'ja', child: Text('日本語 (Japanese)')),
-                ],
-                onChanged: (code) {
-                  widget.onLanguageChanged(code);
-                  Navigator.pop(context);
-                },
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _t('settings'),
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 20),
+                    Text(_t('theme'), style: const TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    SegmentedButton<ThemeMode>(
+                      segments: [
+                        ButtonSegment(value: ThemeMode.system, label: Text(_t('system_default'))),
+                        ButtonSegment(value: ThemeMode.light, label: Text(_t('light'))),
+                        ButtonSegment(value: ThemeMode.dark, label: Text(_t('dark'))),
+                      ],
+                      selected: {widget.currentThemeMode},
+                      onSelectionChanged: (Set<ThemeMode> newSelection) {
+                        widget.onThemeChanged(newSelection.first);
+                        Navigator.pop(context);
+                      },
+                    ),
+                    const SizedBox(height: 20),
+                    Text(_t('language'), style: const TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    DropdownButtonFormField<String?>(
+                      initialValue: widget.currentLanguageCode,
+                      decoration: InputDecoration(
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      items: [
+                        DropdownMenuItem(value: null, child: Text(_t('auto_device'))),
+                        const DropdownMenuItem(value: 'id', child: Text('Bahasa Indonesia')),
+                        const DropdownMenuItem(value: 'en', child: Text('English')),
+                        const DropdownMenuItem(value: 'ja', child: Text('日本語 (Japanese)')),
+                      ],
+                      onChanged: (code) {
+                        widget.onLanguageChanged(code);
+                        Navigator.pop(context);
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                ),
               ),
-              const SizedBox(height: 12),
-            ],
+            ),
+          ),
+        );
+      },
+      transitionBuilder: (context, anim1, anim2, child) {
+        return Transform.scale(
+          scale: Curves.easeOutBack.transform(anim1.value),
+          child: FadeTransition(
+            opacity: anim1,
+            child: child,
           ),
         );
       },
@@ -417,19 +650,30 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
         }
       }
 
+      if (permission == LocationPermission.deniedForever) {
+        _showSnackBar(_t('gps_denied'));
+        await Geolocator.openAppSettings();
+        return;
+      }
+
       Position position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.low,
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.low,
+          timeLimit: Duration(seconds: 10),
+        ),
       );
 
       final lat = position.latitude.toStringAsFixed(2);
       final lng = position.longitude.toStringAsFixed(2);
       final cityName = 'GPS ($lat, $lng)';
 
-      setState(() {
-        _currentCoordinates = Coordinates(position.latitude, position.longitude);
-        _currentCityName = cityName;
-        _calculatePrayers();
-      });
+      if (mounted) {
+        setState(() {
+          _currentCoordinates = Coordinates(position.latitude, position.longitude);
+          _currentCityName = cityName;
+          _calculatePrayers();
+        });
+      }
 
       _saveLocation(cityName, position.latitude, position.longitude);
       _showSnackBar(_t('gps_updated'));
@@ -466,6 +710,28 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
     super.dispose();
   }
 
+  void _openNextPrayerPopup() {
+    DateTime prayerTime;
+    String nextName = _t(_nextPrayerKey);
+    if (_isNextDay && _nextPrayerKey == 'fajr') {
+      final params = _selectedMethod.getParameters();
+      final tomorrowPrayers = PrayerTimes(
+        _currentCoordinates,
+        DateComponents.from(DateTime.now().add(const Duration(days: 1))),
+        params,
+      );
+      prayerTime = tomorrowPrayers.fajr;
+      nextName = _t('fajr_tomorrow');
+    } else {
+      final prayer = _prayerFromKey(_nextPrayerKey);
+      prayerTime = _prayerTimes.timeForPrayer(prayer) ?? DateTime.now();
+    }
+
+    // Provide light haptic feedback when opening countdown popup
+    HapticFeedback.selectionClick();
+    _showPrayerDetailPopup(prayerName: nextName, prayerTime: prayerTime, isCountdown: true);
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -484,7 +750,10 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
           IconButton(
             icon: const Icon(Icons.palette_outlined),
             tooltip: _t('settings'),
-            onPressed: _openSettingsBottomSheet,
+            onPressed: () {
+              HapticFeedback.selectionClick();
+              _openSettingsBottomSheet();
+            },
           ),
           PopupMenuButton<CalculationMethod>(
             icon: const Icon(Icons.tune),
@@ -514,7 +783,7 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 12.0),
             child: Column(
               children: [
-                // Minimal Bar Lokasi
+                // Bar Lokasi
                 Container(
                   decoration: BoxDecoration(
                     color: cardBgColor,
@@ -523,12 +792,15 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
                   ),
                   child: InkWell(
                     borderRadius: BorderRadius.circular(16),
-                    onTap: _openSearchDialog,
+                    onTap: () {
+                      HapticFeedback.selectionClick();
+                      _openSearchDialog();
+                    },
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                       child: Row(
                         children: [
-                          Icon(Icons.search, color: primaryTextColor.withOpacity(0.7), size: 20),
+                          Icon(Icons.search, color: primaryTextColor.withAlpha((0.7 * 255).round()), size: 20),
                           const SizedBox(width: 12),
                           Expanded(
                             child: Column(
@@ -538,7 +810,7 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
                                   _t('location'),
                                   style: TextStyle(
                                     fontSize: 9,
-                                    color: primaryTextColor.withOpacity(0.4),
+                                    color: primaryTextColor.withAlpha((0.4 * 255).round()),
                                     fontWeight: FontWeight.bold,
                                     letterSpacing: 1,
                                   ),
@@ -561,7 +833,7 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
                                     height: 16,
                                     child: CircularProgressIndicator(strokeWidth: 2, color: primaryTextColor),
                                   )
-                                : Icon(Icons.my_location, color: primaryTextColor.withOpacity(0.7), size: 20),
+                                : Icon(Icons.my_location, color: primaryTextColor.withAlpha((0.7 * 255).round()), size: 20),
                             onPressed: _isLoadingGps ? null : _getLocationFromGPS,
                           ),
                         ],
@@ -571,41 +843,45 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
                 ),
                 const SizedBox(height: 16),
 
-                // Card Countdown Minimalis Monokrom High-Contrast
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 20),
-                  decoration: BoxDecoration(
-                    color: isDark ? const Color(0xFF252525) : const Color(0xFF1C1C1E),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Column(
-                    children: [
-                      Text(
-                        '${_t('towards')} ${nextName.toUpperCase()}',
-                        style: const TextStyle(
-                          color: Colors.white54,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: 1.5,
+                // Card Countdown (tap or long-press to show prayer detail popup)
+                GestureDetector(
+                  onTap: _openNextPrayerPopup,
+                  onLongPress: _openNextPrayerPopup,
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 20),
+                    decoration: BoxDecoration(
+                      color: isDark ? const Color(0xFF252525) : const Color(0xFF1C1C1E),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Column(
+                      children: [
+                        Text(
+                          '${_t('towards')} ${nextName.toUpperCase()}',
+                          style: const TextStyle(
+                            color: Colors.white54,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 1.5,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        _formatDuration(_timeToNextPrayer),
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 42,
-                          fontWeight: FontWeight.w300,
-                          letterSpacing: 2,
+                        const SizedBox(height: 8),
+                        Text(
+                          _formatDuration(_timeToNextPrayer),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 42,
+                            fontWeight: FontWeight.w300,
+                            letterSpacing: 2,
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
                 const SizedBox(height: 20),
 
-                // List Jadwal Sholat Minimalis
+                // List Jadwal Sholat (Bisa di-Long Press)
                 Expanded(
                   child: ListView(
                     children: [
@@ -631,17 +907,31 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
       decoration: BoxDecoration(
         color: cardBg,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: isDark ? Colors.transparent : Colors.black.withOpacity(0.05)),
+        border: Border.all(color: isDark ? Colors.transparent : Colors.black.withAlpha((0.05 * 255).round())),
       ),
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 2),
-        title: Text(
-          name,
-          style: TextStyle(fontWeight: FontWeight.w500, fontSize: 14, color: textColor.withOpacity(0.8)),
-        ),
-        trailing: Text(
-          DateFormat.Hm().format(time),
-          style: TextStyle(fontSize: 18, color: textColor, fontWeight: FontWeight.bold),
+          child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          // Trigger Long-Press Popup di sini
+          onLongPress: () {
+            HapticFeedback.selectionClick();
+            _showPrayerDetailPopup(
+              prayerName: name,
+              prayerTime: time,
+            );
+          },
+          child: ListTile(
+            contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 2),
+            title: Text(
+              name,
+              style: TextStyle(fontWeight: FontWeight.w500, fontSize: 14, color: textColor.withAlpha((0.8 * 255).round())),
+            ),
+            trailing: Text(
+              DateFormat.Hm().format(time),
+              style: TextStyle(fontSize: 18, color: textColor, fontWeight: FontWeight.bold),
+            ),
+          ),
         ),
       ),
     );
@@ -651,9 +941,14 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
 // Dialog Pencarian
 class _CitySearchDialog extends StatefulWidget {
   final String Function(String) t;
+  final String? currentLanguageCode;
   final Function(String name, double lat, double lng) onCitySelected;
 
-  const _CitySearchDialog({required this.t, required this.onCitySelected});
+  const _CitySearchDialog({
+    required this.t,
+    required this.currentLanguageCode,
+    required this.onCitySelected,
+  });
 
   @override
   State<_CitySearchDialog> createState() => _CitySearchDialogState();
@@ -667,26 +962,44 @@ class _CitySearchDialogState extends State<_CitySearchDialog> {
 
   Future<void> _searchCity(String query) async {
     if (query.trim().length < 2) return;
-    setState(() {
-      _searching = true;
-      _errorMessage = null;
-    });
+    
+    if (mounted) {
+      setState(() {
+        _searching = true;
+        _errorMessage = null;
+      });
+    }
 
     final url = Uri.parse(
       'https://nominatim.openstreetmap.org/search?q=${Uri.encodeComponent(query)}&format=json&limit=5',
     );
 
     try {
-      final response = await http.get(url).timeout(const Duration(seconds: 5));
+      final response = await http.get(
+        url,
+        headers: {
+          'User-Agent': 'PrayTimeApp/1.0 (contact@yourdomain.com)',
+          'Accept-Language': widget.currentLanguageCode ?? 'id',
+        },
+      ).timeout(const Duration(seconds: 5));
+
+      if (!mounted) return;
+
       if (response.statusCode == 200) {
         setState(() {
           _results = json.decode(response.body);
         });
+      } else {
+        setState(() {
+          _errorMessage = widget.t('search_offline');
+        });
       }
     } catch (_) {
-      setState(() {
-        _errorMessage = widget.t('search_offline');
-      });
+      if (mounted) {
+        setState(() {
+          _errorMessage = widget.t('search_offline');
+        });
+      }
     } finally {
       if (mounted) setState(() => _searching = false);
     }
