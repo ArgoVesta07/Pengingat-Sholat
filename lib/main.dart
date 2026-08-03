@@ -890,9 +890,7 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
                           style: TextStyle(color: isDark ? Colors.white70 : Colors.black54, fontSize: 13),
                         ),
                         const SizedBox(height: 18),
-                        RadioListTile<String>(
-                          title: Text(_t('alarm_mode_ring')),
-                          value: 'ring',
+                        RadioGroup<String>(
                           groupValue: localAlarmMode,
                           onChanged: (value) {
                             if (value == null) return;
@@ -904,21 +902,18 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
                             });
                             _saveAlarmSettings();
                           },
-                        ),
-                        RadioListTile<String>(
-                          title: Text(_t('alarm_mode_vibrate')),
-                          value: 'vibrate',
-                          groupValue: localAlarmMode,
-                          onChanged: (value) {
-                            if (value == null) return;
-                            setDialogState(() {
-                              localAlarmMode = value;
-                            });
-                            setState(() {
-                              _alarmMode = value;
-                            });
-                            _saveAlarmSettings();
-                          },
+                          child: Column(
+                            children: [
+                              RadioListTile<String>(
+                                title: Text(_t('alarm_mode_ring')),
+                                value: 'ring',
+                              ),
+                              RadioListTile<String>(
+                                title: Text(_t('alarm_mode_vibrate')),
+                                value: 'vibrate',
+                              ),
+                            ],
+                          ),
                         ),
                         if (localAlarmMode == 'ring')
                           ListTile(
@@ -1183,7 +1178,7 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
     }
 
     return MediaQuery(
-      data: MediaQuery.of(context).copyWith(textScaleFactor: _uiScale),
+      data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(_uiScale)),
       child: Scaffold(
         appBar: AppBar(
           title: Text(_t('app_title')),
@@ -1375,6 +1370,7 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
           ),
         ),
       ),
+      ),
     );
   }
 
@@ -1474,7 +1470,7 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
                     height: 34,
                     decoration: BoxDecoration(
                       color: alarmActive
-                          ? Theme.of(context).colorScheme.primary.withOpacity(0.16)
+                          ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.16)
                           : isDark
                               ? const Color(0xFF2C2C2E)
                               : const Color(0xFFF0F0F3),
@@ -1520,7 +1516,7 @@ class _CitySearchDialogState extends State<_CitySearchDialog> {
 
   Future<void> _searchCity(String query) async {
     if (query.trim().length < 2) return;
-    
+
     if (mounted) {
       setState(() {
         _searching = true;
