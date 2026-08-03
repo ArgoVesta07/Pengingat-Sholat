@@ -656,7 +656,8 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
       pageBuilder: (context, anim1, anim2) {
         return BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-          child: Center(
+          child: Align(
+            alignment: Alignment(0, 0.75),
             child: Material(
               color: Colors.transparent,
               child: ConstrainedBox(
@@ -703,7 +704,8 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
 
         return BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-          child: Center(
+          child: Align(
+            alignment: Alignment(0, 0.75),
             child: Material(
               color: Colors.transparent,
               child: Container(
@@ -829,7 +831,8 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
 
         return BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-          child: Center(
+          child: Align(
+            alignment: Alignment(0, 0.75),
             child: Material(
               color: Colors.transparent,
               child: StatefulBuilder(
