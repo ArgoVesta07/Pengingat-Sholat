@@ -1161,9 +1161,35 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
                   ),
                 ),
                 const SizedBox(height: 20),
-                Center(
+
+                // List Jadwal Sholat (Bisa di-Long Press)
+                Expanded(
+                  child: ListView(
+                    children: [
+                      _buildTimeCard(_t('fajr'), _prayerTimes.fajr, 'fajr', cardBgColor, primaryTextColor, isDark),
+                      _buildTimeCard(_t('dhuhr'), _prayerTimes.dhuhr, 'dhuhr', cardBgColor, primaryTextColor, isDark),
+                      _buildTimeCard(_t('asr'), _prayerTimes.asr, 'asr', cardBgColor, primaryTextColor, isDark),
+                      _buildTimeCard(_t('maghrib'), _prayerTimes.maghrib, 'maghrib', cardBgColor, primaryTextColor, isDark),
+                      _buildTimeCard(_t('isha'), _prayerTimes.isha, 'isha', cardBgColor, primaryTextColor, isDark),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Container(
+                  padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+                    borderRadius: BorderRadius.circular(24),
+                    boxShadow: [
+                      BoxShadow(
+                        color: isDark ? Colors.black26 : Colors.black12,
+                        blurRadius: 18,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
+                  ),
                   child: Row(
-                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
                     children: [
                       _buildMenuIcon(
                         icon: Icons.alarm,
@@ -1173,7 +1199,6 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
                           _openAlarmSettingsBottomSheet();
                         },
                       ),
-                      const SizedBox(width: 18),
                       _buildMenuIcon(
                         icon: Icons.palette_outlined,
                         label: _t('settings'),
@@ -1182,7 +1207,6 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
                           _openSettingsBottomSheet();
                         },
                       ),
-                      const SizedBox(width: 18),
                       PopupMenuButton<CalculationMethod>(
                         tooltip: _t('calc_method'),
                         icon: const Icon(Icons.tune),
@@ -1202,19 +1226,6 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
                           }).toList();
                         },
                       ),
-                    ],
-                  ),
-                ),
-
-                // List Jadwal Sholat (Bisa di-Long Press)
-                Expanded(
-                  child: ListView(
-                    children: [
-                      _buildTimeCard(_t('fajr'), _prayerTimes.fajr, 'fajr', cardBgColor, primaryTextColor, isDark),
-                      _buildTimeCard(_t('dhuhr'), _prayerTimes.dhuhr, 'dhuhr', cardBgColor, primaryTextColor, isDark),
-                      _buildTimeCard(_t('asr'), _prayerTimes.asr, 'asr', cardBgColor, primaryTextColor, isDark),
-                      _buildTimeCard(_t('maghrib'), _prayerTimes.maghrib, 'maghrib', cardBgColor, primaryTextColor, isDark),
-                      _buildTimeCard(_t('isha'), _prayerTimes.isha, 'isha', cardBgColor, primaryTextColor, isDark),
                     ],
                   ),
                 ),
