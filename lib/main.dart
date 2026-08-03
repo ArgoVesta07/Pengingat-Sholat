@@ -514,7 +514,7 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
       barrierDismissible: true,
       barrierLabel: 'Dismiss',
       barrierColor: Colors.black.withAlpha((0.3 * 255).round()),
-      transitionDuration: const Duration(milliseconds: 250),
+      transitionDuration: const Duration(milliseconds: 300),
       pageBuilder: (context, anim1, anim2) {
         final isDark = Theme.of(context).brightness == Brightness.dark;
     final neutralIconColor = isDark ? Colors.white : const Color(0xFF1C1C1E);
@@ -635,14 +635,27 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
         );
       },
       transitionBuilder: (context, anim1, anim2, child) {
-        return Transform.scale(
-          scale: Curves.easeOutBack.transform(anim1.value),
-          child: FadeTransition(
-            opacity: anim1,
-            child: child,
-          ),
-        );
+        return _buildSlideUpDialogTransition(context, anim1, anim2, child);
       },
+    );
+  }
+
+  Widget _buildSlideUpDialogTransition(
+    BuildContext context,
+    Animation<double> anim1,
+    Animation<double> anim2,
+    Widget child,
+  ) {
+    final slideAnimation = Tween<Offset>(begin: const Offset(0, 0.24), end: Offset.zero).animate(
+      CurvedAnimation(parent: anim1, curve: Curves.easeOutCubic),
+    );
+
+    return SlideTransition(
+      position: slideAnimation,
+      child: FadeTransition(
+        opacity: anim1,
+        child: child,
+      ),
     );
   }
 
@@ -681,13 +694,7 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
         );
       },
       transitionBuilder: (context, anim1, anim2, child) {
-        return Transform.scale(
-          scale: Curves.easeOutBack.transform(anim1.value),
-          child: FadeTransition(
-            opacity: anim1,
-            child: child,
-          ),
-        );
+        return _buildSlideUpDialogTransition(context, anim1, anim2, child);
       },
     );
   }
@@ -806,13 +813,7 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
         );
       },
       transitionBuilder: (context, anim1, anim2, child) {
-        return Transform.scale(
-          scale: Curves.easeOutBack.transform(anim1.value),
-          child: FadeTransition(
-            opacity: anim1,
-            child: child,
-          ),
-        );
+        return _buildSlideUpDialogTransition(context, anim1, anim2, child);
       },
     );
   }
@@ -930,13 +931,7 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
         );
       },
       transitionBuilder: (context, anim1, anim2, child) {
-        return Transform.scale(
-          scale: Curves.easeOutBack.transform(anim1.value),
-          child: FadeTransition(
-            opacity: anim1,
-            child: child,
-          ),
-        );
+        return _buildSlideUpDialogTransition(context, anim1, anim2, child);
       },
     );
   }
@@ -1056,6 +1051,27 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(_t('app_title')),
+        actions: [
+          PopupMenuButton<CalculationMethod>(
+            tooltip: _t('calc_method'),
+            icon: const Icon(Icons.tune),
+            onSelected: (CalculationMethod method) {
+              setState(() {
+                _selectedMethod = method;
+                _calculatePrayers();
+              });
+              _saveCalcMethod(method);
+            },
+            itemBuilder: (context) {
+              return _calcMethods.entries.map((entry) {
+                return PopupMenuItem<CalculationMethod>(
+                  value: entry.value,
+                  child: Text(entry.key, style: const TextStyle(fontSize: 13)),
+                );
+              }).toList();
+            },
+          ),
+        ],
       ),
       body: Center(
         child: SizedBox(
@@ -1205,25 +1221,6 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
                         onTap: () {
                           HapticFeedback.selectionClick();
                           _openSettingsBottomSheet();
-                        },
-                      ),
-                      PopupMenuButton<CalculationMethod>(
-                        tooltip: _t('calc_method'),
-                        icon: const Icon(Icons.tune),
-                        onSelected: (CalculationMethod method) {
-                          setState(() {
-                            _selectedMethod = method;
-                            _calculatePrayers();
-                          });
-                          _saveCalcMethod(method);
-                        },
-                        itemBuilder: (context) {
-                          return _calcMethods.entries.map((entry) {
-                            return PopupMenuItem<CalculationMethod>(
-                              value: entry.value,
-                              child: Text(entry.key, style: const TextStyle(fontSize: 13)),
-                            );
-                          }).toList();
                         },
                       ),
                     ],
