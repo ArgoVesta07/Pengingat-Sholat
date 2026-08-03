@@ -44,6 +44,8 @@ final Map<String, Map<String, String>> _translations = {
     'gps_failed': 'Gagal mengambil GPS',
     'offline_notice': 'Anda sedang offline. Menampilkan lokasi tersimpan.',
     'search_offline': 'Koneksi internet diperlukan untuk mencari kota baru.',
+    'time_label': 'Waktu',
+    'language_search_hint': 'Cari bahasa...',
     'reminder_text': 'Jaga sholat tepat waktu. "Sesungguhnya sholat itu adalah kewajiban yang ditentukan waktunya atas orang-orang yang beriman."',
     'close': 'Tutup',
   },
@@ -74,6 +76,8 @@ final Map<String, Map<String, String>> _translations = {
     'gps_failed': 'Failed to get GPS location',
     'offline_notice': 'You are offline. Showing saved location.',
     'search_offline': 'Internet connection required to search new cities.',
+    'time_label': 'Time',
+    'language_search_hint': 'Search languages...',
     'reminder_text': 'Keep your prayers punctual. "Indeed, prayer has been enjoined upon the believers at fixed times."',
     'close': 'Close',
   },
@@ -104,6 +108,8 @@ final Map<String, Map<String, String>> _translations = {
     'gps_failed': 'GPS情報の取得に失敗しました',
     'offline_notice': 'オフラインです。保存された位置情報を表示しています。',
     'search_offline': '新しい都市の検索にはインターネット接続が必要です。',
+    'time_label': '時間',
+    'language_search_hint': '言語を検索...',
     'reminder_text': '礼拝の時間を守りましょう。"本当に、礼拝は信仰する者たちに定められた時に行うべき義務である。"',
     'close': '閉じる',
   },
@@ -241,6 +247,7 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
   String _nextPrayerKey = 'fajr';
   bool _isNextDay = false;
   bool _isLoadingGps = false;
+  String _languageSearch = '';
   DateTime _lastCalculatedDate = DateTime.now();
 
   @override
@@ -272,10 +279,17 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
     widget.prefs.setInt('calc_method_index', index);
   }
 
+  String _resolveLanguageCode(String localeCode) {
+    if (_translations.containsKey(localeCode)) return localeCode;
+    final baseCode = localeCode.split(RegExp(r'[-_]')).first;
+    if (_translations.containsKey(baseCode)) return baseCode;
+    return 'en';
+  }
+
   String _t(String key) {
-    String lang = widget.currentLanguageCode ??
-        View.of(context).platformDispatcher.locale.languageCode;
-    if (!_translations.containsKey(lang)) lang = 'id';
+    final locale = View.of(context).platformDispatcher.locale;
+    final rawLang = widget.currentLanguageCode ?? locale.toLanguageTag();
+    final lang = _resolveLanguageCode(rawLang);
     return _translations[lang]?[key] ?? key;
   }
 
@@ -363,6 +377,9 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
       transitionDuration: const Duration(milliseconds: 250),
       pageBuilder: (context, anim1, anim2) {
         final isDark = Theme.of(context).brightness == Brightness.dark;
+    final neutralIconColor = isDark ? Colors.white : const Color(0xFF1C1C1E);
+    final neutralIconBackground = isDark ? Colors.white12 : const Color(0xFFF2F2F7);
+    final neutralTimeColor = isDark ? Colors.white70 : const Color(0xFF6B7280);
 
         if (isCountdown) {
           return BackdropFilter(
@@ -413,13 +430,13 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
                     Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: Theme.of(context).primaryColor.withAlpha((0.15 * 255).round()),
+                        color: neutralIconBackground,
                         shape: BoxShape.circle,
                       ),
                       child: Icon(
                         Icons.access_time_filled_rounded,
                         size: 40,
-                        color: Theme.of(context).primaryColor,
+                        color: neutralIconColor,
                       ),
                     ),
                     const SizedBox(height: 16),
@@ -433,11 +450,11 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      'Waktu: $formattedTime',
+                      '${_t('time_label')}: $formattedTime',
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
-                        color: Theme.of(context).primaryColor,
+                        color: neutralTimeColor,
                       ),
                     ),
                     const SizedBox(height: 16),
@@ -583,21 +600,73 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
                     const SizedBox(height: 20),
                     Text(_t('language'), style: const TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 8),
-                    DropdownButtonFormField<String?>(
-                      initialValue: widget.currentLanguageCode,
-                      decoration: InputDecoration(
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                      items: [
-                        DropdownMenuItem(value: null, child: Text(_t('auto_device'))),
-                        const DropdownMenuItem(value: 'id', child: Text('Bahasa Indonesia')),
-                        const DropdownMenuItem(value: 'en', child: Text('English')),
-                        const DropdownMenuItem(value: 'ja', child: Text('日本語 (Japanese)')),
-                      ],
-                      onChanged: (code) {
-                        widget.onLanguageChanged(code);
-                        Navigator.pop(context);
+                    StatefulBuilder(
+                      builder: (context, setState) {
+                        final languageOptions = <String, String>{
+                          'id': 'Bahasa Indonesia',
+                          'en': 'English',
+                          'ja': '日本語 (Japanese)',
+                        };
+                        final filteredLanguages = languageOptions.entries
+                            .where((entry) => entry.value.toLowerCase().contains(_languageSearch.toLowerCase()))
+                            .toList();
+
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            TextField(
+                              decoration: InputDecoration(
+                                hintText: _t('language_search_hint'),
+                                prefixIcon: const Icon(Icons.search),
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                              ),
+                              onChanged: (value) => setState(() => _languageSearch = value),
+                            ),
+                            const SizedBox(height: 12),
+                            Container(
+                              decoration: BoxDecoration(
+                                color: isDark ? const Color(0xFF1B1B1D) : const Color(0xFFF5F5F7),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: isDark ? Colors.white12 : Colors.black12),
+                              ),
+                              child: Column(
+                                children: [
+                                  ListTile(
+                                    title: Text(_t('auto_device')),
+                                    subtitle: Text(_t('system_default')),
+                                    selected: widget.currentLanguageCode == null,
+                                    onTap: () {
+                                      widget.onLanguageChanged(null);
+                                      Navigator.pop(context);
+                                    },
+                                  ),
+                                  const Divider(height: 1),
+                                  if (filteredLanguages.isEmpty)
+                                    Padding(
+                                      padding: const EdgeInsets.all(16.0),
+                                      child: Text(
+                                        _t('language_search_hint'),
+                                        style: TextStyle(color: isDark ? Colors.white54 : Colors.black54),
+                                      ),
+                                    ),
+                                  for (final entry in filteredLanguages)
+                                    ListTile(
+                                      title: Text(entry.value),
+                                      trailing: widget.currentLanguageCode == entry.key
+                                          ? Icon(Icons.check, color: Theme.of(context).colorScheme.primary)
+                                          : null,
+                                      selected: widget.currentLanguageCode == entry.key,
+                                      onTap: () {
+                                        widget.onLanguageChanged(entry.key);
+                                        Navigator.pop(context);
+                                      },
+                                    ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        );
                       },
                     ),
                     const SizedBox(height: 12),
