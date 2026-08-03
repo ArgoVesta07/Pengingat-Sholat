@@ -7,6 +7,8 @@ import 'package:adhan/adhan.dart';
 import 'package:intl/intl.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
+import 'package:just_audio/just_audio.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() async {
@@ -48,6 +50,13 @@ final Map<String, Map<String, String>> _translations = {
     'language_search_hint': 'Cari bahasa...',
     'reminder_text': 'Jaga sholat tepat waktu. "Sesungguhnya sholat itu adalah kewajiban yang ditentukan waktunya atas orang-orang yang beriman."',
     'close': 'Tutup',
+    'alarm_settings': 'Pengingat',
+    'alarm_enabled': 'Alarm aktif',
+    'alarm_mode_ring': 'Berdering',
+    'alarm_mode_vibrate': 'Getar',
+    'alarm_custom_pick': 'Import suara MP3/WAV',
+    'alarm_hint': 'Ketuk ikon alarm di samping waktu sholat untuk aktifkan/matikan.',
+    'alarm_select_prayers': 'Pilih waktu sholat',
   },
   'en': {
     'app_title': 'PRAYER TIMES',
@@ -80,6 +89,13 @@ final Map<String, Map<String, String>> _translations = {
     'language_search_hint': 'Search languages...',
     'reminder_text': 'Keep your prayers punctual. "Indeed, prayer has been enjoined upon the believers at fixed times."',
     'close': 'Close',
+    'alarm_settings': 'Alarm',
+    'alarm_enabled': 'Alarm enabled',
+    'alarm_mode_ring': 'Ring',
+    'alarm_mode_vibrate': 'Vibrate',
+    'alarm_custom_pick': 'Import MP3/WAV file',
+    'alarm_hint': 'Tap the alarm icon beside each prayer time to toggle it on/off.',
+    'alarm_select_prayers': 'Select prayer times',
   },
   'ja': {
     'app_title': '礼 拝 時 間',
@@ -112,6 +128,52 @@ final Map<String, Map<String, String>> _translations = {
     'language_search_hint': '言語を検索...',
     'reminder_text': '礼拝の時間を守りましょう。"本当に、礼拝は信仰する者たちに定められた時に行うべき義務である。"',
     'close': '閉じる',
+    'alarm_settings': 'アラーム',
+    'alarm_enabled': 'アラームを有効にする',
+    'alarm_mode_ring': 'ベル',
+    'alarm_mode_vibrate': 'バイブ',
+    'alarm_custom_pick': 'MP3/WAVを選択',
+    'alarm_hint': '各礼拝時間の横にあるアラームアイコンをタップしてオン/オフを切り替えます。',
+    'alarm_select_prayers': '礼拝時間を選択',
+  },
+  'zh': {
+    'app_title': '祈祷时间',
+    'location': '位置',
+    'towards': '下一次祈祷',
+    'fajr': '黎明礼拜',
+    'dhuhr': '中午礼拜',
+    'asr': '下午礼拜',
+    'maghrib': '黄昏礼拜',
+    'isha': '夜礼拜',
+    'fajr_tomorrow': '黎明礼拜（明天）',
+    'search_title': '搜索城市/区域',
+    'search_hint': '例如：北京、东京、纽约...',
+    'cancel': '取消',
+    'calc_method': '计算方法',
+    'settings': '设置',
+    'theme': '主题',
+    'language': '语言',
+    'system_default': '系统默认',
+    'light': '浅色模式',
+    'dark': '深色模式',
+    'auto_device': '自动（设备）',
+    'gps_updated': 'GPS位置已更新并保存',
+    'gps_disabled': 'GPS服务已禁用',
+    'gps_denied': 'GPS权限被拒绝',
+    'gps_failed': '获取GPS位置失败',
+    'offline_notice': '您处于离线状态。正在显示保存的位置。',
+    'search_offline': '搜索新城市需要互联网连接。',
+    'time_label': '时间',
+    'language_search_hint': '搜索语言...',
+    'reminder_text': '保持祷告准时。“确实，祷告已被规定在固定的时间点要求信士们遵守。”',
+    'close': '关闭',
+    'alarm_settings': '提醒',
+    'alarm_enabled': '启用闹钟',
+    'alarm_mode_ring': '响铃',
+    'alarm_mode_vibrate': '振动',
+    'alarm_custom_pick': '导入 MP3/WAV 文件',
+    'alarm_hint': '点击祷告时间旁边的闹钟图标可打开/关闭提醒。',
+    'alarm_select_prayers': '选择祷告时间',
   },
 };
 
@@ -247,15 +309,90 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
   String _nextPrayerKey = 'fajr';
   bool _isNextDay = false;
   bool _isLoadingGps = false;
-  String _languageSearch = '';
+  String _alarmMode = 'ring';
+  String? _customAlarmPath;
+  Set<String> _alarmPrayerTimes = {'fajr', 'dhuhr', 'asr', 'maghrib', 'isha'};
+  AudioPlayer? _audioPlayer;
+  DateTime? _lastAlarmPlayedAt;
   DateTime _lastCalculatedDate = DateTime.now();
 
   @override
   void initState() {
     super.initState();
     _loadSavedLocationAndMethod();
+    _loadSavedAlarmSettings();
+    _audioPlayer = AudioPlayer();
     _calculatePrayers();
     _timer = Timer.periodic(const Duration(seconds: 1), (_) => _updateCountdown());
+  }
+
+  void _loadSavedAlarmSettings() {
+    _alarmMode = widget.prefs.getString('alarm_mode') ?? 'ring';
+    _customAlarmPath = widget.prefs.getString('custom_alarm_path');
+    _alarmPrayerTimes = {
+      if (widget.prefs.getBool('alarm_fajr') ?? true) 'fajr',
+      if (widget.prefs.getBool('alarm_dhuhr') ?? true) 'dhuhr',
+      if (widget.prefs.getBool('alarm_asr') ?? true) 'asr',
+      if (widget.prefs.getBool('alarm_maghrib') ?? true) 'maghrib',
+      if (widget.prefs.getBool('alarm_isha') ?? true) 'isha',
+    };
+  }
+
+  void _saveAlarmSettings() {
+    if (_customAlarmPath != null) {
+      widget.prefs.setString('custom_alarm_path', _customAlarmPath!);
+    }
+    widget.prefs.setBool('alarm_fajr', _alarmPrayerTimes.contains('fajr'));
+    widget.prefs.setBool('alarm_dhuhr', _alarmPrayerTimes.contains('dhuhr'));
+    widget.prefs.setBool('alarm_asr', _alarmPrayerTimes.contains('asr'));
+    widget.prefs.setBool('alarm_maghrib', _alarmPrayerTimes.contains('maghrib'));
+    widget.prefs.setBool('alarm_isha', _alarmPrayerTimes.contains('isha'));
+  }
+
+  Future<void> _pickCustomAlarmSound() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['mp3', 'wav', 'ogg', 'aac'],
+    );
+    if (result != null && result.files.single.path != null) {
+      setState(() {
+        _customAlarmPath = result.files.single.path;
+      });
+      widget.prefs.setString('custom_alarm_path', _customAlarmPath!);
+    }
+  }
+
+  Future<void> _playAlarmSound() async {
+    if (_alarmPrayerTimes.isEmpty) return;
+    if (_alarmMode == 'ring' && _customAlarmPath != null) {
+      await _audioPlayer?.setFilePath(_customAlarmPath!);
+      await _audioPlayer?.play();
+    } else if (_alarmMode == 'vibrate') {
+      HapticFeedback.vibrate();
+    }
+  }
+
+  void _maybePlayPrayerAlarm(DateTime now) {
+    if (_alarmPrayerTimes.isEmpty) return;
+
+    final prayerTimes = {
+      'fajr': _prayerTimes.fajr,
+      'dhuhr': _prayerTimes.dhuhr,
+      'asr': _prayerTimes.asr,
+      'maghrib': _prayerTimes.maghrib,
+      'isha': _prayerTimes.isha,
+    };
+
+    for (final entry in prayerTimes.entries) {
+      if (!_alarmPrayerTimes.contains(entry.key)) continue;
+      final target = entry.value;
+      if (now.hour == target.hour && now.minute == target.minute && now.second == target.second) {
+        if (_lastAlarmPlayedAt == null || now.difference(_lastAlarmPlayedAt!).inSeconds >= 60) {
+          _playAlarmSound();
+          _lastAlarmPlayedAt = now;
+        }
+      }
+    }
   }
 
   void _loadSavedLocationAndMethod() {
@@ -336,6 +473,9 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
           _timeToNextPrayer = nextTime.difference(now);
         });
       }
+    }
+    if (mounted) {
+      _maybePlayPrayerAlarm(now);
     }
   }
 
@@ -600,78 +740,187 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
                     const SizedBox(height: 20),
                     Text(_t('language'), style: const TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 8),
-                    StatefulBuilder(
-                      builder: (context, setState) {
-                        final languageOptions = <String, String>{
-                          'id': 'Bahasa Indonesia',
-                          'en': 'English',
-                          'ja': '日本語 (Japanese)',
-                        };
-                        final filteredLanguages = languageOptions.entries
-                            .where((entry) => entry.value.toLowerCase().contains(_languageSearch.toLowerCase()))
-                            .toList();
-
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            TextField(
-                              decoration: InputDecoration(
-                                hintText: _t('language_search_hint'),
-                                prefixIcon: const Icon(Icons.search),
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                              ),
-                              onChanged: (value) => setState(() => _languageSearch = value),
-                            ),
-                            const SizedBox(height: 12),
-                            Container(
-                              decoration: BoxDecoration(
-                                color: isDark ? const Color(0xFF1B1B1D) : const Color(0xFFF5F5F7),
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: isDark ? Colors.white12 : Colors.black12),
-                              ),
-                              child: Column(
-                                children: [
-                                  ListTile(
-                                    title: Text(_t('auto_device')),
-                                    subtitle: Text(_t('system_default')),
-                                    selected: widget.currentLanguageCode == null,
-                                    onTap: () {
-                                      widget.onLanguageChanged(null);
-                                      Navigator.pop(context);
-                                    },
-                                  ),
-                                  const Divider(height: 1),
-                                  if (filteredLanguages.isEmpty)
-                                    Padding(
-                                      padding: const EdgeInsets.all(16.0),
-                                      child: Text(
-                                        _t('language_search_hint'),
-                                        style: TextStyle(color: isDark ? Colors.white54 : Colors.black54),
-                                      ),
-                                    ),
-                                  for (final entry in filteredLanguages)
-                                    ListTile(
-                                      title: Text(entry.value),
-                                      trailing: widget.currentLanguageCode == entry.key
-                                          ? Icon(Icons.check, color: Theme.of(context).colorScheme.primary)
-                                          : null,
-                                      selected: widget.currentLanguageCode == entry.key,
-                                      onTap: () {
-                                        widget.onLanguageChanged(entry.key);
-                                        Navigator.pop(context);
-                                      },
-                                    ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        );
-                      },
+                    Container(
+                      decoration: BoxDecoration(
+                        color: isDark ? const Color(0xFF1B1B1D) : const Color(0xFFF5F5F7),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: isDark ? Colors.white12 : Colors.black12),
+                      ),
+                      child: Column(
+                        children: [
+                          ListTile(
+                            title: Text(_t('auto_device')),
+                            subtitle: Text(_t('system_default')),
+                            selected: widget.currentLanguageCode == null,
+                            onTap: () {
+                              widget.onLanguageChanged(null);
+                              Navigator.pop(context);
+                            },
+                          ),
+                          const Divider(height: 1),
+                          ListTile(
+                            title: const Text('Bahasa Indonesia'),
+                            selected: widget.currentLanguageCode == 'id',
+                            trailing: widget.currentLanguageCode == 'id'
+                                ? Icon(Icons.check, color: Theme.of(context).colorScheme.primary)
+                                : null,
+                            onTap: () {
+                              widget.onLanguageChanged('id');
+                              Navigator.pop(context);
+                            },
+                          ),
+                          const Divider(height: 1),
+                          ListTile(
+                            title: const Text('English'),
+                            selected: widget.currentLanguageCode == 'en',
+                            trailing: widget.currentLanguageCode == 'en'
+                                ? Icon(Icons.check, color: Theme.of(context).colorScheme.primary)
+                                : null,
+                            onTap: () {
+                              widget.onLanguageChanged('en');
+                              Navigator.pop(context);
+                            },
+                          ),
+                          const Divider(height: 1),
+                          ListTile(
+                            title: const Text('日本語 (Japanese)'),
+                            selected: widget.currentLanguageCode == 'ja',
+                            trailing: widget.currentLanguageCode == 'ja'
+                                ? Icon(Icons.check, color: Theme.of(context).colorScheme.primary)
+                                : null,
+                            onTap: () {
+                              widget.onLanguageChanged('ja');
+                              Navigator.pop(context);
+                            },
+                          ),
+                        ],
+                      ),
                     ),
-                    const SizedBox(height: 12),
                   ],
                 ),
+              ),
+            ),
+          ),
+        );
+      },
+      transitionBuilder: (context, anim1, anim2, child) {
+        return Transform.scale(
+          scale: Curves.easeOutBack.transform(anim1.value),
+          child: FadeTransition(
+            opacity: anim1,
+            child: child,
+          ),
+        );
+      },
+    );
+  }
+
+  void _openAlarmSettingsBottomSheet() {
+    showGeneralDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'Dismiss',
+      barrierColor: Colors.black.withAlpha((0.3 * 255).round()),
+      transitionDuration: const Duration(milliseconds: 250),
+      pageBuilder: (context, anim1, anim2) {
+        final isDark = Theme.of(context).brightness == Brightness.dark;
+        String localAlarmMode = _alarmMode;
+        String? localCustomAlarmPath = _customAlarmPath;
+
+        return BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+          child: Center(
+            child: Material(
+              color: Colors.transparent,
+              child: StatefulBuilder(
+                builder: (context, setDialogState) {
+                  return Container(
+                    width: MediaQuery.of(context).size.width * 0.9,
+                    constraints: const BoxConstraints(maxWidth: 420),
+                    padding: const EdgeInsets.all(24.0),
+                    decoration: BoxDecoration(
+                      color: isDark ? const Color(0xFF2C2C2E).withAlpha((0.95 * 255).round()) : Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _t('alarm_settings'),
+                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 10),
+                        Text(
+                          _t('alarm_hint'),
+                          style: TextStyle(color: isDark ? Colors.white70 : Colors.black54, fontSize: 13),
+                        ),
+                        const SizedBox(height: 18),
+                        RadioListTile<String>(
+                          title: Text(_t('alarm_mode_ring')),
+                          value: 'ring',
+                          groupValue: localAlarmMode,
+                          onChanged: (value) {
+                            if (value == null) return;
+                            setDialogState(() {
+                              localAlarmMode = value;
+                            });
+                            setState(() {
+                              _alarmMode = value;
+                            });
+                            _saveAlarmSettings();
+                          },
+                        ),
+                        RadioListTile<String>(
+                          title: Text(_t('alarm_mode_vibrate')),
+                          value: 'vibrate',
+                          groupValue: localAlarmMode,
+                          onChanged: (value) {
+                            if (value == null) return;
+                            setDialogState(() {
+                              localAlarmMode = value;
+                            });
+                            setState(() {
+                              _alarmMode = value;
+                            });
+                            _saveAlarmSettings();
+                          },
+                        ),
+                        if (localAlarmMode == 'ring')
+                          ListTile(
+                            title: Text(localCustomAlarmPath == null ? _t('alarm_custom_pick') : localCustomAlarmPath!),
+                            trailing: const Icon(Icons.folder_open),
+                            onTap: () async {
+                              await _pickCustomAlarmSound();
+                              setDialogState(() {
+                                localCustomAlarmPath = _customAlarmPath;
+                              });
+                            },
+                          ),
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton(
+                            onPressed: () => Navigator.pop(context),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: isDark ? Colors.grey[300] : const Color(0xFF1C1C1E),
+                              foregroundColor: isDark ? Colors.black : Colors.white,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              elevation: 0,
+                            ),
+                            child: Text(
+                              _t('close'),
+                              style: const TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
               ),
             ),
           ),
@@ -805,6 +1054,14 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
       appBar: AppBar(
         title: Text(_t('app_title')),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.alarm),
+            tooltip: _t('alarm_settings'),
+            onPressed: () {
+              HapticFeedback.selectionClick();
+              _openAlarmSettingsBottomSheet();
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.palette_outlined),
             tooltip: _t('settings'),
@@ -943,11 +1200,11 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
                 Expanded(
                   child: ListView(
                     children: [
-                      _buildTimeCard(_t('fajr'), _prayerTimes.fajr, cardBgColor, primaryTextColor, isDark),
-                      _buildTimeCard(_t('dhuhr'), _prayerTimes.dhuhr, cardBgColor, primaryTextColor, isDark),
-                      _buildTimeCard(_t('asr'), _prayerTimes.asr, cardBgColor, primaryTextColor, isDark),
-                      _buildTimeCard(_t('maghrib'), _prayerTimes.maghrib, cardBgColor, primaryTextColor, isDark),
-                      _buildTimeCard(_t('isha'), _prayerTimes.isha, cardBgColor, primaryTextColor, isDark),
+                      _buildTimeCard(_t('fajr'), _prayerTimes.fajr, 'fajr', cardBgColor, primaryTextColor, isDark),
+                      _buildTimeCard(_t('dhuhr'), _prayerTimes.dhuhr, 'dhuhr', cardBgColor, primaryTextColor, isDark),
+                      _buildTimeCard(_t('asr'), _prayerTimes.asr, 'asr', cardBgColor, primaryTextColor, isDark),
+                      _buildTimeCard(_t('maghrib'), _prayerTimes.maghrib, 'maghrib', cardBgColor, primaryTextColor, isDark),
+                      _buildTimeCard(_t('isha'), _prayerTimes.isha, 'isha', cardBgColor, primaryTextColor, isDark),
                     ],
                   ),
                 ),
@@ -959,7 +1216,14 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
     );
   }
 
-  Widget _buildTimeCard(String name, DateTime time, Color cardBg, Color textColor, bool isDark) {
+  Widget _buildTimeCard(String name, DateTime time, String prayerKey, Color cardBg, Color textColor, bool isDark) {
+    final alarmActive = _alarmPrayerTimes.contains(prayerKey);
+    final iconColor = alarmActive
+        ? Theme.of(context).colorScheme.primary
+        : isDark
+            ? Colors.white38
+            : Colors.black38;
+
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 4.0),
       decoration: BoxDecoration(
@@ -967,7 +1231,7 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: isDark ? Colors.transparent : Colors.black.withAlpha((0.05 * 255).round())),
       ),
-          child: Material(
+      child: Material(
         color: Colors.transparent,
         child: InkWell(
           borderRadius: BorderRadius.circular(12),
@@ -985,9 +1249,45 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
               name,
               style: TextStyle(fontWeight: FontWeight.w500, fontSize: 14, color: textColor.withAlpha((0.8 * 255).round())),
             ),
-            trailing: Text(
-              DateFormat.Hm().format(time),
-              style: TextStyle(fontSize: 18, color: textColor, fontWeight: FontWeight.bold),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  DateFormat.Hm().format(time),
+                  style: TextStyle(fontSize: 18, color: textColor, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(width: 12),
+                InkWell(
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: () {
+                    setState(() {
+                      if (alarmActive) {
+                        _alarmPrayerTimes.remove(prayerKey);
+                      } else {
+                        _alarmPrayerTimes.add(prayerKey);
+                      }
+                      _saveAlarmSettings();
+                    });
+                  },
+                  child: Container(
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      color: alarmActive
+                          ? Theme.of(context).colorScheme.primary.withOpacity(0.16)
+                          : isDark
+                              ? const Color(0xFF2C2C2E)
+                              : const Color(0xFFF0F0F3),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(
+                      alarmActive ? Icons.alarm_on_rounded : Icons.alarm_outlined,
+                      color: iconColor,
+                      size: 20,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ),
