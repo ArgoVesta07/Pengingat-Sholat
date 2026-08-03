@@ -1056,43 +1056,6 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(_t('app_title')),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.alarm),
-            tooltip: _t('alarm_settings'),
-            onPressed: () {
-              HapticFeedback.selectionClick();
-              _openAlarmSettingsBottomSheet();
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.palette_outlined),
-            tooltip: _t('settings'),
-            onPressed: () {
-              HapticFeedback.selectionClick();
-              _openSettingsBottomSheet();
-            },
-          ),
-          PopupMenuButton<CalculationMethod>(
-            icon: const Icon(Icons.tune),
-            tooltip: _t('calc_method'),
-            onSelected: (CalculationMethod method) {
-              setState(() {
-                _selectedMethod = method;
-                _calculatePrayers();
-              });
-              _saveCalcMethod(method);
-            },
-            itemBuilder: (context) {
-              return _calcMethods.entries.map((entry) {
-                return PopupMenuItem<CalculationMethod>(
-                  value: entry.value,
-                  child: Text(entry.key, style: const TextStyle(fontSize: 13)),
-                );
-              }).toList();
-            },
-          ),
-        ],
       ),
       body: Center(
         child: SizedBox(
@@ -1198,6 +1161,50 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
                   ),
                 ),
                 const SizedBox(height: 20),
+                Center(
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _buildMenuIcon(
+                        icon: Icons.alarm,
+                        label: _t('alarm_settings'),
+                        onTap: () {
+                          HapticFeedback.selectionClick();
+                          _openAlarmSettingsBottomSheet();
+                        },
+                      ),
+                      const SizedBox(width: 18),
+                      _buildMenuIcon(
+                        icon: Icons.palette_outlined,
+                        label: _t('settings'),
+                        onTap: () {
+                          HapticFeedback.selectionClick();
+                          _openSettingsBottomSheet();
+                        },
+                      ),
+                      const SizedBox(width: 18),
+                      PopupMenuButton<CalculationMethod>(
+                        tooltip: _t('calc_method'),
+                        icon: const Icon(Icons.tune),
+                        onSelected: (CalculationMethod method) {
+                          setState(() {
+                            _selectedMethod = method;
+                            _calculatePrayers();
+                          });
+                          _saveCalcMethod(method);
+                        },
+                        itemBuilder: (context) {
+                          return _calcMethods.entries.map((entry) {
+                            return PopupMenuItem<CalculationMethod>(
+                              value: entry.value,
+                              child: Text(entry.key, style: const TextStyle(fontSize: 13)),
+                            );
+                          }).toList();
+                        },
+                      ),
+                    ],
+                  ),
+                ),
 
                 // List Jadwal Sholat (Bisa di-Long Press)
                 Expanded(
@@ -1216,6 +1223,44 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildMenuIcon({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Material(
+          color: isDark ? const Color(0xFF1E1E1E) : const Color(0xFFF5F5F7),
+          borderRadius: BorderRadius.circular(14),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(14),
+            onTap: onTap,
+            child: Container(
+              width: 56,
+              height: 56,
+              alignment: Alignment.center,
+              child: Icon(icon, size: 26, color: isDark ? Colors.white : const Color(0xFF1C1C1E)),
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        SizedBox(
+          width: 72,
+          child: Text(
+            label,
+            style: TextStyle(fontSize: 11, color: isDark ? Colors.white70 : Colors.black54),
+            textAlign: TextAlign.center,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
     );
   }
 
