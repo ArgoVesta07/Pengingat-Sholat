@@ -57,9 +57,11 @@ final Map<String, Map<String, String>> _translations = {
     'alarm_custom_pick': 'Import suara MP3/WAV',
     'alarm_hint': 'Ketuk ikon alarm di samping waktu sholat untuk aktifkan/matikan.',
     'alarm_select_prayers': 'Pilih waktu sholat',
+    'ui_size': 'Ukuran UI',
   },
   'en': {
     'app_title': 'PRAYER TIMES',
+    'ui_size': 'UI Size',
     'location': 'LOCATION',
     'towards': 'NEXT PRAYER',
     'fajr': 'Fajr',
@@ -94,6 +96,7 @@ final Map<String, Map<String, String>> _translations = {
     'alarm_mode_ring': 'Ring',
     'alarm_mode_vibrate': 'Vibrate',
     'alarm_custom_pick': 'Import MP3/WAV file',
+    'alarm_selected_file': 'Selected file',
     'alarm_hint': 'Tap the alarm icon beside each prayer time to toggle it on/off.',
     'alarm_select_prayers': 'Select prayer times',
   },
@@ -133,8 +136,10 @@ final Map<String, Map<String, String>> _translations = {
     'alarm_mode_ring': 'ベル',
     'alarm_mode_vibrate': 'バイブ',
     'alarm_custom_pick': 'MP3/WAVを選択',
+    'alarm_selected_file': '選択されたファイル',
     'alarm_hint': '各礼拝時間の横にあるアラームアイコンをタップしてオン/オフを切り替えます。',
     'alarm_select_prayers': '礼拝時間を選択',
+    'ui_size': 'UIサイズ',
   },
   'zh': {
     'app_title': '祈祷时间',
@@ -172,8 +177,10 @@ final Map<String, Map<String, String>> _translations = {
     'alarm_mode_ring': '响铃',
     'alarm_mode_vibrate': '振动',
     'alarm_custom_pick': '导入 MP3/WAV 文件',
+    'alarm_selected_file': '已选择文件',
     'alarm_hint': '点击祷告时间旁边的闹钟图标可打开/关闭提醒。',
     'alarm_select_prayers': '选择祷告时间',
+    'ui_size': 'UI 大小',
   },
 };
 
@@ -311,6 +318,7 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
   bool _isLoadingGps = false;
   String _alarmMode = 'ring';
   String? _customAlarmPath;
+  int _uiScalePercentage = 50;
   Set<String> _alarmPrayerTimes = {'fajr', 'dhuhr', 'asr', 'maghrib', 'isha'};
   AudioPlayer? _audioPlayer;
   DateTime? _lastAlarmPlayedAt;
@@ -321,6 +329,7 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
     super.initState();
     _loadSavedLocationAndMethod();
     _loadSavedAlarmSettings();
+    _loadSavedUiScale();
     _audioPlayer = AudioPlayer();
     _calculatePrayers();
     _timer = Timer.periodic(const Duration(seconds: 1), (_) => _updateCountdown());
@@ -349,6 +358,14 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
     widget.prefs.setBool('alarm_isha', _alarmPrayerTimes.contains('isha'));
   }
 
+  void _loadSavedUiScale() {
+    _uiScalePercentage = widget.prefs.getInt('ui_scale_percentage') ?? 50;
+  }
+
+  void _saveUiScale() {
+    widget.prefs.setInt('ui_scale_percentage', _uiScalePercentage);
+  }
+
   Future<void> _pickCustomAlarmSound() async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
@@ -361,6 +378,13 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
       widget.prefs.setString('custom_alarm_path', _customAlarmPath!);
     }
   }
+
+  String _getAlarmFileName(String? path) {
+    if (path == null) return _t('alarm_custom_pick');
+    return path.split(RegExp(r'[\\/]+')).last;
+  }
+
+  double get _uiScale => _uiScalePercentage / 100;
 
   Future<void> _playAlarmSound() async {
     if (_alarmPrayerTimes.isEmpty) return;
@@ -590,7 +614,7 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      '${_t('time_label')}: $formattedTime',
+                      '${_t("time_label")}: $formattedTime',
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
@@ -635,7 +659,13 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
         );
       },
       transitionBuilder: (context, anim1, anim2, child) {
-        return _buildSlideUpDialogTransition(context, anim1, anim2, child);
+        return Transform.scale(
+          scale: Curves.easeOutBack.transform(anim1.value),
+          child: FadeTransition(
+            opacity: anim1,
+            child: child,
+          ),
+        );
       },
     );
   }
@@ -892,7 +922,15 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
                         ),
                         if (localAlarmMode == 'ring')
                           ListTile(
-                            title: Text(localCustomAlarmPath == null ? _t('alarm_custom_pick') : localCustomAlarmPath!),
+                            title: Text(
+                                  _getAlarmFileName(localCustomAlarmPath),
+                            ),
+                            subtitle: localCustomAlarmPath != null
+                                ? Text(
+                                    _t('alarm_selected_file'),
+                                    style: TextStyle(color: isDark ? Colors.white54 : Colors.black54, fontSize: 12),
+                                  )
+                                : null,
                             trailing: const Icon(Icons.folder_open),
                             onTap: () async {
                               await _pickCustomAlarmSound();
@@ -902,6 +940,102 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
                             },
                           ),
                         const SizedBox(height: 12),
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton(
+                            onPressed: () => Navigator.pop(context),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: isDark ? Colors.grey[300] : const Color(0xFF1C1C1E),
+                              foregroundColor: isDark ? Colors.black : Colors.white,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              elevation: 0,
+                            ),
+                            child: Text(
+                              _t('close'),
+                              style: const TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+        );
+      },
+      transitionBuilder: (context, anim1, anim2, child) {
+        return _buildSlideUpDialogTransition(context, anim1, anim2, child);
+      },
+    );
+  }
+
+  void _openUiSizeDialog() {
+    showGeneralDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'Dismiss',
+      barrierColor: Colors.black.withAlpha((0.3 * 255).round()),
+      transitionDuration: const Duration(milliseconds: 250),
+      pageBuilder: (context, anim1, anim2) {
+        final isDark = Theme.of(context).brightness == Brightness.dark;
+        int localScale = _uiScalePercentage;
+
+        return BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+          child: Align(
+            alignment: Alignment(0, 0.75),
+            child: Material(
+              color: Colors.transparent,
+              child: StatefulBuilder(
+                builder: (context, setDialogState) {
+                  return Container(
+                    width: MediaQuery.of(context).size.width * 0.9,
+                    constraints: const BoxConstraints(maxWidth: 420),
+                    padding: const EdgeInsets.all(24.0),
+                    decoration: BoxDecoration(
+                      color: isDark ? const Color(0xFF2C2C2E).withAlpha((0.95 * 255).round()) : Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _t('ui_size'),
+                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          '$localScale%',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: isDark ? Colors.white70 : Colors.black87,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        Slider(
+                          value: localScale.toDouble(),
+                          min: 30,
+                          max: 120,
+                          divisions: 18,
+                          label: '$localScale%',
+                          onChanged: (value) {
+                            setDialogState(() {
+                              localScale = value.toInt();
+                            });
+                            setState(() {
+                              _uiScalePercentage = value.toInt();
+                            });
+                            _saveUiScale();
+                          },
+                        ),
+                        const SizedBox(height: 16),
                         SizedBox(
                           width: double.infinity,
                           child: ElevatedButton(
@@ -1048,37 +1182,39 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
       nextName = _t('fajr_tomorrow');
     }
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(_t('app_title')),
-        actions: [
-          PopupMenuButton<CalculationMethod>(
-            tooltip: _t('calc_method'),
-            icon: const Icon(Icons.tune),
-            onSelected: (CalculationMethod method) {
-              setState(() {
-                _selectedMethod = method;
-                _calculatePrayers();
-              });
-              _saveCalcMethod(method);
-            },
-            itemBuilder: (context) {
-              return _calcMethods.entries.map((entry) {
-                return PopupMenuItem<CalculationMethod>(
-                  value: entry.value,
-                  child: Text(entry.key, style: const TextStyle(fontSize: 13)),
-                );
-              }).toList();
-            },
-          ),
-        ],
-      ),
-      body: Center(
-        child: SizedBox(
-          width: 420,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 12.0),
-            child: Column(
+    return MediaQuery(
+      data: MediaQuery.of(context).copyWith(textScaleFactor: _uiScale),
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(_t('app_title')),
+          actions: [
+            PopupMenuButton<CalculationMethod>(
+              tooltip: _t('calc_method'),
+              icon: const Icon(Icons.tune),
+              onSelected: (CalculationMethod method) {
+                setState(() {
+                  _selectedMethod = method;
+                  _calculatePrayers();
+                });
+                _saveCalcMethod(method);
+              },
+              itemBuilder: (context) {
+                return _calcMethods.entries.map((entry) {
+                  return PopupMenuItem<CalculationMethod>(
+                    value: entry.value,
+                    child: Text(entry.key, style: const TextStyle(fontSize: 13)),
+                  );
+                }).toList();
+              },
+            ),
+          ],
+        ),
+        body: Center(
+          child: SizedBox(
+            width: 420,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 12.0),
+              child: Column(
               children: [
                 // Bar Lokasi
                 Container(
@@ -1154,7 +1290,7 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
                     child: Column(
                       children: [
                         Text(
-                          '${_t('towards')} ${nextName.toUpperCase()}',
+                          '${_t("towards")} ${nextName.toUpperCase()}',
                           style: const TextStyle(
                             color: Colors.white54,
                             fontSize: 11,
@@ -1221,6 +1357,14 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
                         onTap: () {
                           HapticFeedback.selectionClick();
                           _openSettingsBottomSheet();
+                        },
+                      ),
+                      _buildMenuIcon(
+                        icon: Icons.format_size,
+                        label: _t('ui_size'),
+                        onTap: () {
+                          HapticFeedback.selectionClick();
+                          _openUiSizeDialog();
                         },
                       ),
                     ],
