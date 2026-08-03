@@ -363,12 +363,23 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
       transitionDuration: const Duration(milliseconds: 250),
       pageBuilder: (context, anim1, anim2) {
         final isDark = Theme.of(context).brightness == Brightness.dark;
-        final primaryTextColor = isDark ? Colors.white : const Color(0xFF1C1C1E);
-        final iconColor = primaryTextColor;
-        final iconBg = isDark ? Colors.white12 : Colors.black12;
 
-        // Distinct accent for countdown popup (avoid default purple)
-        final countdownAccent = isDark ? Colors.tealAccent.shade100 : const Color(0xFF0A84FF);
+        if (isCountdown) {
+          return BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+            child: Center(
+              child: Material(
+                color: Colors.transparent,
+                child: _CountdownPopupContent(
+                  targetTime: prayerTime,
+                  prayerName: prayerName,
+                  isDark: isDark,
+                  closeLabel: _t('close'),
+                ),
+              ),
+            ),
+          );
+        }
 
         return BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
@@ -376,13 +387,13 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
             child: Material(
               color: Colors.transparent,
               child: Container(
-                width: isCountdown ? MediaQuery.of(context).size.width * 0.9 : MediaQuery.of(context).size.width * 0.8,
+                width: MediaQuery.of(context).size.width * 0.8,
                 padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
                   color: isDark
                       ? const Color(0xFF2C2C2E).withAlpha((0.85 * 255).round())
                       : Colors.white.withAlpha((0.85 * 255).round()),
-                  borderRadius: BorderRadius.circular(isCountdown ? 20 : 24),
+                  borderRadius: BorderRadius.circular(24),
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black.withAlpha((0.15 * 255).round()),
@@ -399,69 +410,47 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    if (isCountdown) ...[
-                      Text(
-                        _formatDuration(_timeToNextPrayer),
-                        style: TextStyle(
-                          fontSize: 52,
-                          fontWeight: FontWeight.w300,
-                          color: countdownAccent,
-                          letterSpacing: 2,
-                        ),
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).primaryColor.withAlpha((0.15 * 255).round()),
+                        shape: BoxShape.circle,
                       ),
-                      const SizedBox(height: 12),
-                      Text(
-                        prayerName.toUpperCase(),
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: primaryTextColor,
-                        ),
+                      child: Icon(
+                        Icons.access_time_filled_rounded,
+                        size: 40,
+                        color: Theme.of(context).primaryColor,
                       ),
-                      const SizedBox(height: 24),
-                    ] else ...[
-                      Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: iconBg,
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          Icons.access_time_filled_rounded,
-                          size: isCountdown ? 48 : 40,
-                          color: iconColor,
-                        ),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      prayerName,
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                        color: isDark ? Colors.white : Colors.black87,
                       ),
-                      const SizedBox(height: 16),
-                      Text(
-                        prayerName,
-                        style: TextStyle(
-                          fontSize: isCountdown ? 26 : 22,
-                          fontWeight: FontWeight.bold,
-                          color: isDark ? Colors.white : Colors.black87,
-                        ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Waktu: $formattedTime',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: Theme.of(context).primaryColor,
                       ),
-                      const SizedBox(height: 6),
-                      Text(
-                        'Waktu: $formattedTime',
-                        style: TextStyle(
-                          fontSize: isCountdown ? 20 : 16,
-                          fontWeight: FontWeight.w700,
-                          color: isCountdown ? countdownAccent : primaryTextColor,
-                        ),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      _t('reminder_text'),
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 13,
+                        height: 1.4,
+                        color: isDark ? Colors.white70 : Colors.black54,
                       ),
-                      const SizedBox(height: 16),
-                      Text(
-                        _t('reminder_text'),
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 13,
-                          height: 1.4,
-                          color: isDark ? Colors.white70 : Colors.black54,
-                        ),
-                      ),
-                      const SizedBox(height: 24),
-                    ],
+                    ),
+                    const SizedBox(height: 24),
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton(
@@ -1071,6 +1060,135 @@ class _CitySearchDialogState extends State<_CitySearchDialog> {
           child: Text(widget.t('cancel')),
         ),
       ],
+    );
+  }
+}
+
+
+class _CountdownPopupContent extends StatefulWidget {
+  final DateTime targetTime;
+  final String prayerName;
+  final bool isDark;
+  final String closeLabel;
+
+  const _CountdownPopupContent({
+    required this.targetTime,
+    required this.prayerName,
+    required this.isDark,
+    required this.closeLabel,
+  });
+
+  @override
+  State<_CountdownPopupContent> createState() => _CountdownPopupContentState();
+}
+
+class _CountdownPopupContentState extends State<_CountdownPopupContent> {
+  late Duration _remaining;
+  Timer? _localTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _updateRemaining();
+    _localTimer = Timer.periodic(const Duration(seconds: 1), (_) => _tick());
+  }
+
+  void _updateRemaining() {
+    final now = DateTime.now();
+    setState(() => _remaining = widget.targetTime.difference(now));
+  }
+
+  void _tick() {
+    if (!mounted) return;
+    final now = DateTime.now();
+    final diff = widget.targetTime.difference(now);
+    if (diff.inSeconds <= 0) {
+      _localTimer?.cancel();
+      setState(() => _remaining = Duration.zero);
+    } else {
+      setState(() => _remaining = diff);
+    }
+  }
+
+  @override
+  void dispose() {
+    _localTimer?.cancel();
+    super.dispose();
+  }
+
+  String _format(Duration d) {
+    final hours = d.inHours.remainder(24).toString().padLeft(2, '0');
+    final minutes = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final seconds = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return '$hours:$minutes:$seconds';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final neutralAccent = widget.isDark ? Colors.white70 : const Color(0xFF6B7280);
+
+    return Container(
+      width: MediaQuery.of(context).size.width * 0.9,
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: widget.isDark
+            ? const Color(0xFF2C2C2E).withAlpha((0.85 * 255).round())
+            : Colors.white.withAlpha((0.85 * 255).round()),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withAlpha((0.15 * 255).round()),
+            blurRadius: 25,
+            offset: const Offset(0, 10),
+          ),
+        ],
+        border: Border.all(
+          color: widget.isDark ? Colors.white.withAlpha((0.1 * 255).round()) : Colors.black.withAlpha((0.05 * 255).round()),
+        ),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            _format(_remaining),
+            style: TextStyle(
+              fontSize: 52,
+              fontWeight: FontWeight.w300,
+              color: neutralAccent,
+              letterSpacing: 2,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            widget.prayerName.toUpperCase(),
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: widget.isDark ? Colors.white : const Color(0xFF1C1C1E),
+            ),
+          ),
+          const SizedBox(height: 24),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: () => Navigator.pop(context),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: widget.isDark ? Colors.grey[300] : const Color(0xFF1C1C1E),
+                foregroundColor: widget.isDark ? Colors.black : Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                elevation: 0,
+              ),
+              child: Text(
+                widget.closeLabel,
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
