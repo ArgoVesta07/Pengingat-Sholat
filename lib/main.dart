@@ -5,9 +5,12 @@ import 'package:adhan/adhan.dart';
 import 'package:intl/intl.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
-void main() {
-  runApp(const MyApp());
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  final prefs = await SharedPreferences.getInstance();
+  runApp(MyApp(prefs: prefs));
 }
 
 // Dictionary Multi-Bahasa
@@ -33,10 +36,12 @@ final Map<String, Map<String, String>> _translations = {
     'light': 'Terang (Light)',
     'dark': 'Gelap (Dark)',
     'auto_device': 'Otomatis (Perangkat)',
-    'gps_updated': 'Lokasi GPS diperbarui',
+    'gps_updated': 'Lokasi GPS diperbarui & disimpan',
     'gps_disabled': 'Layanan GPS tidak aktif',
     'gps_denied': 'Izin GPS ditolak',
     'gps_failed': 'Gagal mengambil GPS',
+    'offline_notice': 'Anda sedang offline. Menampilkan lokasi tersimpan.',
+    'search_offline': 'Koneksi internet diperlukan untuk mencari kota baru.',
   },
   'en': {
     'app_title': 'PRAYER TIMES',
@@ -59,10 +64,12 @@ final Map<String, Map<String, String>> _translations = {
     'light': 'Light Mode',
     'dark': 'Dark Mode',
     'auto_device': 'Automatic (Device)',
-    'gps_updated': 'GPS location updated',
+    'gps_updated': 'GPS location updated & saved',
     'gps_disabled': 'GPS service disabled',
     'gps_denied': 'GPS permission denied',
     'gps_failed': 'Failed to get GPS location',
+    'offline_notice': 'You are offline. Showing saved location.',
+    'search_offline': 'Internet connection required to search new cities.',
   },
   'ja': {
     'app_title': '礼 拝 時 間',
@@ -85,39 +92,58 @@ final Map<String, Map<String, String>> _translations = {
     'light': 'ライト',
     'dark': 'ダーク',
     'auto_device': '自動 (デバイス設定)',
-    'gps_updated': 'GPS位置情報を更新しました',
+    'gps_updated': 'GPS位置情報を更新・保存しました',
     'gps_disabled': 'GPSが無効です',
     'gps_denied': 'GPS権限が拒否されました',
     'gps_failed': 'GPS情報の取得に失敗しました',
+    'offline_notice': 'オフラインです。保存された位置情報を表示しています。',
+    'search_offline': '新しい都市の検索にはインターネット接続が必要です。',
   },
 };
 
 class MyApp extends StatefulWidget {
-  const MyApp({super.key});
+  final SharedPreferences prefs;
+  const MyApp({super.key, required this.prefs});
 
   @override
   State<MyApp> createState() => _MyAppState();
 }
 
 class _MyAppState extends State<MyApp> {
-  ThemeMode _themeMode = ThemeMode.system;
-  String? _selectedLanguageCode; // null = mengikuti bahasa sistem
+  late ThemeMode _themeMode;
+  String? _selectedLanguageCode;
+
+  @override
+  void initState() {
+    super.initState();
+    // Load Tema tersimpan
+    final savedTheme = widget.prefs.getInt('theme_mode') ?? 0;
+    _themeMode = ThemeMode.values[savedTheme];
+
+    // Load Bahasa tersimpan
+    _selectedLanguageCode = widget.prefs.getString('language_code');
+  }
 
   void _setThemeMode(ThemeMode mode) {
     setState(() => _themeMode = mode);
+    widget.prefs.setInt('theme_mode', mode.index);
   }
 
   void _setLanguageCode(String? code) {
     setState(() => _selectedLanguageCode = code);
+    if (code == null) {
+      widget.prefs.remove('language_code');
+    } else {
+      widget.prefs.setString('language_code', code);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'Jadwal Sholat',
+      title: 'PrayTime',
       themeMode: _themeMode,
-      // Tema Terang (Light)
       theme: ThemeData.light().copyWith(
         scaffoldBackgroundColor: const Color(0xFFF5F5F7),
         cardColor: Colors.white,
@@ -139,7 +165,6 @@ class _MyAppState extends State<MyApp> {
           iconTheme: IconThemeData(color: Color(0xFF1C1C1E)),
         ),
       ),
-      // Tema Gelap (Dark)
       darkTheme: ThemeData.dark().copyWith(
         scaffoldBackgroundColor: const Color(0xFF121212),
         cardColor: const Color(0xFF1E1E1E),
@@ -162,6 +187,7 @@ class _MyAppState extends State<MyApp> {
         ),
       ),
       home: JadwalSholatScreen(
+        prefs: widget.prefs,
         currentThemeMode: _themeMode,
         currentLanguageCode: _selectedLanguageCode,
         onThemeChanged: _setThemeMode,
@@ -172,6 +198,7 @@ class _MyAppState extends State<MyApp> {
 }
 
 class JadwalSholatScreen extends StatefulWidget {
+  final SharedPreferences prefs;
   final ThemeMode currentThemeMode;
   final String? currentLanguageCode;
   final Function(ThemeMode) onThemeChanged;
@@ -179,6 +206,7 @@ class JadwalSholatScreen extends StatefulWidget {
 
   const JadwalSholatScreen({
     super.key,
+    required this.prefs,
     required this.currentThemeMode,
     required this.currentLanguageCode,
     required this.onThemeChanged,
@@ -198,9 +226,9 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
     'ISNA (Amerika Utara)': CalculationMethod.north_america,
   };
 
-  String _currentCityName = 'Takahashi, Okayama (Jepang)';
-  Coordinates _currentCoordinates = Coordinates(34.7933, 133.6190);
-  CalculationMethod _selectedMethod = CalculationMethod.muslim_world_league;
+  late String _currentCityName;
+  late Coordinates _currentCoordinates;
+  late CalculationMethod _selectedMethod;
   late PrayerTimes _prayerTimes;
 
   Timer? _timer;
@@ -212,11 +240,32 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
   @override
   void initState() {
     super.initState();
+    _loadSavedLocationAndMethod();
     _calculatePrayers();
     _timer = Timer.periodic(const Duration(seconds: 1), (_) => _updateCountdown());
   }
 
-  // Helper Lokalisasi Teks
+  void _loadSavedLocationAndMethod() {
+    _currentCityName = widget.prefs.getString('city_name') ?? 'Takahashi, Okayama (Jepang)';
+    final lat = widget.prefs.getDouble('latitude') ?? 34.7933;
+    final lng = widget.prefs.getDouble('longitude') ?? 133.6190;
+    _currentCoordinates = Coordinates(lat, lng);
+
+    final methodIndex = widget.prefs.getInt('calc_method_index') ?? 0;
+    _selectedMethod = _calcMethods.values.elementAt(methodIndex);
+  }
+
+  void _saveLocation(String city, double lat, double lng) {
+    widget.prefs.setString('city_name', city);
+    widget.prefs.setDouble('latitude', lat);
+    widget.prefs.setDouble('longitude', lng);
+  }
+
+  void _saveCalcMethod(CalculationMethod method) {
+    final index = _calcMethods.values.toList().indexOf(method);
+    widget.prefs.setInt('calc_method_index', index);
+  }
+
   String _t(String key) {
     String lang = widget.currentLanguageCode ??
         View.of(context).platformDispatcher.locale.languageCode;
@@ -282,6 +331,7 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
             _currentCoordinates = Coordinates(lat, lng);
             _calculatePrayers();
           });
+          _saveLocation(name, lat, lng);
           Navigator.pop(context);
         },
       ),
@@ -295,7 +345,6 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (context) {
-        final isDark = Theme.of(context).brightness == Brightness.dark;
         return Padding(
           padding: const EdgeInsets.all(24.0),
           child: Column(
@@ -307,7 +356,6 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
                 style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 20),
-              // Pilihan Tema
               Text(_t('theme'), style: const TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
               SegmentedButton<ThemeMode>(
@@ -323,7 +371,6 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
                 },
               ),
               const SizedBox(height: 20),
-              // Pilihan Bahasa
               Text(_t('language'), style: const TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
               DropdownButtonFormField<String?>(
@@ -376,13 +423,15 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
 
       final lat = position.latitude.toStringAsFixed(2);
       final lng = position.longitude.toStringAsFixed(2);
+      final cityName = 'GPS ($lat, $lng)';
 
       setState(() {
         _currentCoordinates = Coordinates(position.latitude, position.longitude);
-        _currentCityName = 'GPS ($lat, $lng)';
+        _currentCityName = cityName;
         _calculatePrayers();
       });
 
+      _saveLocation(cityName, position.latitude, position.longitude);
       _showSnackBar(_t('gps_updated'));
     } catch (e) {
       _showSnackBar(_t('gps_failed'));
@@ -432,13 +481,11 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
       appBar: AppBar(
         title: Text(_t('app_title')),
         actions: [
-          // Tombol Pengaturan Tema & Bahasa
           IconButton(
             icon: const Icon(Icons.palette_outlined),
             tooltip: _t('settings'),
             onPressed: _openSettingsBottomSheet,
           ),
-          // Tombol Metode Perhitungan
           PopupMenuButton<CalculationMethod>(
             icon: const Icon(Icons.tune),
             tooltip: _t('calc_method'),
@@ -447,6 +494,7 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
                 _selectedMethod = method;
                 _calculatePrayers();
               });
+              _saveCalcMethod(method);
             },
             itemBuilder: (context) {
               return _calcMethods.entries.map((entry) {
@@ -615,24 +663,31 @@ class _CitySearchDialogState extends State<_CitySearchDialog> {
   final TextEditingController _controller = TextEditingController();
   List<dynamic> _results = [];
   bool _searching = false;
+  String? _errorMessage;
 
   Future<void> _searchCity(String query) async {
     if (query.trim().length < 2) return;
-    setState(() => _searching = true);
+    setState(() {
+      _searching = true;
+      _errorMessage = null;
+    });
 
     final url = Uri.parse(
       'https://nominatim.openstreetmap.org/search?q=${Uri.encodeComponent(query)}&format=json&limit=5',
     );
 
     try {
-      final response = await http.get(url);
+      final response = await http.get(url).timeout(const Duration(seconds: 5));
       if (response.statusCode == 200) {
         setState(() {
           _results = json.decode(response.body);
         });
       }
-    } catch (_) {} 
-    finally {
+    } catch (_) {
+      setState(() {
+        _errorMessage = widget.t('search_offline');
+      });
+    } finally {
       if (mounted) setState(() => _searching = false);
     }
   }
@@ -663,6 +718,15 @@ class _CitySearchDialogState extends State<_CitySearchDialog> {
             ),
             const SizedBox(height: 12),
             if (_searching) const CircularProgressIndicator(),
+            if (_errorMessage != null)
+              Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: Text(
+                  _errorMessage!,
+                  style: const TextStyle(color: Colors.redAccent, fontSize: 12),
+                  textAlign: TextAlign.center,
+                ),
+              ),
             if (!_searching && _results.isNotEmpty)
               SizedBox(
                 height: 200,
