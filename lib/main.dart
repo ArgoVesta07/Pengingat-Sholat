@@ -845,18 +845,19 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
                         const SizedBox(height: 20),
                         Text(_t('theme'), style: const TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.bold)),
                         const SizedBox(height: 8),
-                        SegmentedButton<ThemeMode>(
-                          segments: [
-                            ButtonSegment(value: ThemeMode.system, label: Text(_t('system_default'))),
-                            ButtonSegment(value: ThemeMode.light, label: Text(_t('light'))),
-                            ButtonSegment(value: ThemeMode.dark, label: Text(_t('dark'))),
+                        _AnimatedSegmentedToggle<ThemeMode>(
+                          isDark: isDark,
+                          value: localThemeMode,
+                          options: [
+                            _SegmentOption(value: ThemeMode.system, label: _t('system_default'), icon: Icons.smartphone_rounded),
+                            _SegmentOption(value: ThemeMode.light, label: _t('light'), icon: Icons.light_mode_rounded),
+                            _SegmentOption(value: ThemeMode.dark, label: _t('dark'), icon: Icons.dark_mode_rounded),
                           ],
-                          selected: {localThemeMode},
-                          onSelectionChanged: (Set<ThemeMode> newSelection) {
+                          onChanged: (mode) {
                             setDialogState(() {
-                              localThemeMode = newSelection.first;
+                              localThemeMode = mode;
                             });
-                            widget.onThemeChanged(newSelection.first);
+                            widget.onThemeChanged(mode);
                           },
                         ),
                         const SizedBox(height: 20),
@@ -874,10 +875,11 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
                             clipBehavior: Clip.antiAlias,
                             child: Column(
                               children: [
-                                ListTile(
-                                  title: Text(_t('auto_device')),
-                                  subtitle: Text(_t('system_default')),
+                                _buildLanguageOption(
+                                  isDark: isDark,
                                   selected: localLanguageCode == null,
+                                  title: _t('auto_device'),
+                                  subtitle: _t('system_default'),
                                   onTap: () {
                                     setDialogState(() {
                                       localLanguageCode = null;
@@ -886,12 +888,10 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
                                   },
                                 ),
                                 const Divider(height: 1),
-                                ListTile(
-                                  title: const Text('Bahasa Indonesia'),
+                                _buildLanguageOption(
+                                  isDark: isDark,
                                   selected: localLanguageCode == 'id',
-                                  trailing: localLanguageCode == 'id'
-                                      ? Icon(Icons.check, color: Theme.of(context).colorScheme.primary)
-                                      : null,
+                                  title: 'Bahasa Indonesia',
                                   onTap: () {
                                     setDialogState(() {
                                       localLanguageCode = 'id';
@@ -900,12 +900,10 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
                                   },
                                 ),
                                 const Divider(height: 1),
-                                ListTile(
-                                  title: const Text('English'),
+                                _buildLanguageOption(
+                                  isDark: isDark,
                                   selected: localLanguageCode == 'en',
-                                  trailing: localLanguageCode == 'en'
-                                      ? Icon(Icons.check, color: Theme.of(context).colorScheme.primary)
-                                      : null,
+                                  title: 'English',
                                   onTap: () {
                                     setDialogState(() {
                                       localLanguageCode = 'en';
@@ -914,12 +912,10 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
                                   },
                                 ),
                                 const Divider(height: 1),
-                                ListTile(
-                                  title: const Text('日本語 (Japanese)'),
+                                _buildLanguageOption(
+                                  isDark: isDark,
                                   selected: localLanguageCode == 'ja',
-                                  trailing: localLanguageCode == 'ja'
-                                      ? Icon(Icons.check, color: Theme.of(context).colorScheme.primary)
-                                      : null,
+                                  title: '日本語 (Japanese)',
                                   onTap: () {
                                     setDialogState(() {
                                       localLanguageCode = 'ja';
@@ -1010,10 +1006,14 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
                           style: TextStyle(color: isDark ? Colors.white70 : Colors.black54, fontSize: 13),
                         ),
                         const SizedBox(height: 18),
-                        RadioGroup<String>(
-                          groupValue: localAlarmMode,
+                        _AnimatedSegmentedToggle<String>(
+                          isDark: isDark,
+                          value: localAlarmMode,
+                          options: [
+                            _SegmentOption(value: 'ring', label: _t('alarm_mode_ring'), icon: Icons.notifications_active_rounded),
+                            _SegmentOption(value: 'vibrate', label: _t('alarm_mode_vibrate'), icon: Icons.vibration_rounded),
+                          ],
                           onChanged: (value) {
-                            if (value == null) return;
                             setDialogState(() {
                               localAlarmMode = value;
                             });
@@ -1022,20 +1022,30 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
                             });
                             _saveAlarmSettings();
                           },
-                          child: Column(
-                            children: [
-                              RadioListTile<String>(
-                                title: Text(_t('alarm_mode_ring')),
-                                value: 'ring',
-                              ),
-                              RadioListTile<String>(
-                                title: Text(_t('alarm_mode_vibrate')),
-                                value: 'vibrate',
-                              ),
-                            ],
-                          ),
                         ),
-                        if (localAlarmMode == 'ring') ...[
+                        const SizedBox(height: 18),
+                        AnimatedSize(
+                          duration: const Duration(milliseconds: 260),
+                          curve: Curves.easeOutCubic,
+                          alignment: Alignment.topCenter,
+                          child: AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 200),
+                            switchInCurve: Curves.easeOut,
+                            switchOutCurve: Curves.easeIn,
+                            transitionBuilder: (child, anim) => FadeTransition(
+                              opacity: anim,
+                              child: SizeTransition(
+                                sizeFactor: anim,
+                                axisAlignment: -1,
+                                child: child,
+                              ),
+                            ),
+                            child: localAlarmMode != 'ring'
+                                ? const SizedBox(key: ValueKey('no_ring_options'))
+                                : Column(
+                                    key: const ValueKey('ring_options'),
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
                           Text(
                             _t('alarm_current_ringtone'),
                             style: TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.bold),
@@ -1205,7 +1215,10 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
                               ),
                             ],
                           ),
-                        ],
+                                  ],
+                                ),
+                          ),
+                        ),
                         const SizedBox(height: 12),
                         SizedBox(
                           width: double.infinity,
@@ -1500,7 +1513,9 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
               child: Column(
               children: [
                 // Bar Lokasi
-                Container(
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeOut,
                   decoration: BoxDecoration(
                     color: cardBgColor,
                     borderRadius: BorderRadius.circular(16),
@@ -1543,13 +1558,23 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
                           IconButton(
                             constraints: const BoxConstraints(),
                             padding: EdgeInsets.zero,
-                            icon: _isLoadingGps
-                                ? SizedBox(
-                                    width: 16,
-                                    height: 16,
-                                    child: CircularProgressIndicator(strokeWidth: 2, color: primaryTextColor),
-                                  )
-                                : Icon(Icons.my_location, color: primaryTextColor.withAlpha((0.7 * 255).round()), size: 20),
+                            icon: AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 200),
+                              transitionBuilder: (child, anim) => FadeTransition(opacity: anim, child: child),
+                              child: _isLoadingGps
+                                  ? SizedBox(
+                                      key: const ValueKey('gps_loading'),
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(strokeWidth: 2, color: primaryTextColor),
+                                    )
+                                  : Icon(
+                                      Icons.my_location,
+                                      key: const ValueKey('gps_icon'),
+                                      color: primaryTextColor.withAlpha((0.7 * 255).round()),
+                                      size: 20,
+                                    ),
+                            ),
                             onPressed: _isLoadingGps ? null : _getLocationFromGPS,
                           ),
                         ],
@@ -1563,7 +1588,9 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
                 GestureDetector(
                   onTap: _openNextPrayerPopup,
                   onLongPress: _openNextPrayerPopup,
-                  child: Container(
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeOut,
                     width: double.infinity,
                     padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 20),
                     decoration: BoxDecoration(
@@ -1610,7 +1637,9 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
                   ),
                 ),
                 const SizedBox(height: 20),
-                Container(
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeOut,
                   padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
                   decoration: BoxDecoration(
                     color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
@@ -1662,6 +1691,36 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
     );
   }
 
+  Widget _buildLanguageOption({
+    required bool selected,
+    required String title,
+    String? subtitle,
+    required VoidCallback onTap,
+    required bool isDark,
+  }) {
+    final highlightColor = Theme.of(context).colorScheme.primary.withValues(alpha: isDark ? 0.22 : 0.1);
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOut,
+      color: selected ? highlightColor : Colors.transparent,
+      child: ListTile(
+        title: Text(title),
+        subtitle: subtitle != null ? Text(subtitle) : null,
+        trailing: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 200),
+          transitionBuilder: (child, anim) => ScaleTransition(
+            scale: anim,
+            child: FadeTransition(opacity: anim, child: child),
+          ),
+          child: selected
+              ? Icon(Icons.check_circle_rounded, color: Theme.of(context).colorScheme.primary, key: const ValueKey('checked'))
+              : const SizedBox(width: 24, key: ValueKey('unchecked')),
+        ),
+        onTap: onTap,
+      ),
+    );
+  }
+
   Widget _buildMenuIcon({
     required IconData icon,
     required String label,
@@ -1708,7 +1767,9 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
             ? Colors.white38
             : Colors.black38;
 
-    return Container(
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOut,
       margin: const EdgeInsets.symmetric(vertical: 4.0),
       decoration: BoxDecoration(
         color: cardBg,
@@ -1753,7 +1814,9 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
                       _saveAlarmSettings();
                     });
                   },
-                  child: Container(
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 220),
+                    curve: Curves.easeOut,
                     width: 34,
                     height: 34,
                     decoration: BoxDecoration(
@@ -1764,15 +1827,143 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
                               : const Color(0xFFF0F0F3),
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: Icon(
-                      alarmActive ? Icons.alarm_on_rounded : Icons.alarm_outlined,
-                      color: iconColor,
-                      size: 20,
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 200),
+                      transitionBuilder: (child, anim) => ScaleTransition(
+                        scale: anim,
+                        child: FadeTransition(opacity: anim, child: child),
+                      ),
+                      child: Icon(
+                        alarmActive ? Icons.alarm_on_rounded : Icons.alarm_outlined,
+                        key: ValueKey(alarmActive),
+                        color: iconColor,
+                        size: 20,
+                      ),
                     ),
                   ),
                 ),
               ],
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// Opsi satu segmen untuk _AnimatedSegmentedToggle
+class _SegmentOption<T> {
+  final T value;
+  final String label;
+  final IconData icon;
+  const _SegmentOption({required this.value, required this.label, required this.icon});
+}
+
+// Toggle N-opsi dengan indikator pill yang meluncur (dipakai utk Ring/Vibrate & Tema)
+class _AnimatedSegmentedToggle<T> extends StatelessWidget {
+  final bool isDark;
+  final T value;
+  final List<_SegmentOption<T>> options;
+  final ValueChanged<T> onChanged;
+
+  const _AnimatedSegmentedToggle({
+    required this.isDark,
+    required this.value,
+    required this.options,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final selectedIndex = options.indexWhere((o) => o.value == value).clamp(0, options.length - 1);
+    final trackColor = isDark ? const Color(0xFF1B1B1D) : const Color(0xFFF5F5F7);
+    final pillColor = isDark ? Colors.white : const Color(0xFF1C1C1E);
+    final activeTextColor = isDark ? Colors.black : Colors.white;
+    final inactiveTextColor = isDark ? Colors.white70 : Colors.black54;
+    final n = options.length;
+    final alignX = n > 1 ? (2 * selectedIndex / (n - 1) - 1) : 0.0;
+
+    return Container(
+      height: 44,
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: trackColor,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: isDark ? Colors.white12 : Colors.black12),
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final segmentWidth = constraints.maxWidth / n;
+          return Stack(
+            children: [
+              AnimatedAlign(
+                duration: const Duration(milliseconds: 260),
+                curve: Curves.easeOutCubic,
+                alignment: Alignment(alignX, 0),
+                child: Container(
+                  width: segmentWidth,
+                  height: double.infinity,
+                  decoration: BoxDecoration(
+                    color: pillColor,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+              ),
+              Row(
+                children: options.map((opt) {
+                  final selected = opt.value == value;
+                  return _buildSegment(
+                    icon: opt.icon,
+                    label: opt.label,
+                    selected: selected,
+                    activeColor: activeTextColor,
+                    inactiveColor: inactiveTextColor,
+                    onTap: () => onChanged(opt.value),
+                  );
+                }).toList(),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildSegment({
+    required IconData icon,
+    required String label,
+    required bool selected,
+    required Color activeColor,
+    required Color inactiveColor,
+    required VoidCallback onTap,
+  }) {
+    final color = selected ? activeColor : inactiveColor;
+    return Expanded(
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: onTap,
+        child: SizedBox(
+          height: 44,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              AnimatedDefaultTextStyle(
+                duration: const Duration(milliseconds: 200),
+                style: TextStyle(
+                  color: color,
+                  fontSize: 13,
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(icon, size: 16, color: color),
+                    const SizedBox(width: 6),
+                    Flexible(child: Text(label, overflow: TextOverflow.ellipsis)),
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
       ),
