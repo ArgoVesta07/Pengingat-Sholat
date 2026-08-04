@@ -39,6 +39,7 @@ final Map<String, Map<String, String>> _translations = {
     'theme': 'Tema Tampilan',
     'language': 'Bahasa Aplikasi',
     'system_default': 'Sistem Perangkat',
+    'theme_system_short': 'Sistem',
     'light': 'Terang (Light)',
     'dark': 'Gelap (Dark)',
     'auto_device': 'Otomatis (Perangkat)',
@@ -65,6 +66,7 @@ final Map<String, Map<String, String>> _translations = {
     'alarm_volume': 'Volume Alarm',
     'alarm_test': 'Tes Suara',
     'alarm_hint': 'Ketuk ikon alarm di samping waktu sholat untuk aktifkan/matikan.',
+    'alarm_play_error': 'Gagal memutar suara alarm. Coba pilih ulang file-nya.',
     'alarm_select_prayers': 'Pilih waktu sholat',
     'ui_size': 'Ukuran UI',
     'ui_size_preview': 'Pratinjau Tampilan',
@@ -88,6 +90,7 @@ final Map<String, Map<String, String>> _translations = {
     'theme': 'App Theme',
     'language': 'App Language',
     'system_default': 'System Default',
+    'theme_system_short': 'System',
     'light': 'Light Mode',
     'dark': 'Dark Mode',
     'auto_device': 'Automatic (Device)',
@@ -114,6 +117,7 @@ final Map<String, Map<String, String>> _translations = {
     'alarm_volume': 'Alarm Volume',
     'alarm_test': 'Test Sound',
     'alarm_hint': 'Tap the alarm icon beside each prayer time to toggle it on/off.',
+    'alarm_play_error': 'Failed to play the alarm sound. Try selecting the file again.',
     'alarm_select_prayers': 'Select prayer times',
     'ui_size_preview': 'Live Preview',
   },
@@ -135,6 +139,7 @@ final Map<String, Map<String, String>> _translations = {
     'theme': 'テーマ',
     'language': '言語',
     'system_default': 'システム設定に従う',
+    'theme_system_short': 'システム',
     'light': 'ライト',
     'dark': 'ダーク',
     'auto_device': '自動 (デバイス設定)',
@@ -161,6 +166,7 @@ final Map<String, Map<String, String>> _translations = {
     'alarm_volume': 'アラーム音量',
     'alarm_test': 'サウンドをテスト',
     'alarm_hint': '各礼拝時間の横にあるアラームアイコンをタップしてオン/オフを切り替えます。',
+    'alarm_play_error': 'アラーム音の再生に失敗しました。ファイルを選び直してください。',
     'alarm_select_prayers': '礼拝時間を選択',
     'ui_size': 'UIサイズ',
     'ui_size_preview': 'リアルタイムプレビュー',
@@ -183,6 +189,7 @@ final Map<String, Map<String, String>> _translations = {
     'theme': '主题',
     'language': '语言',
     'system_default': '系统默认',
+    'theme_system_short': '系统',
     'light': '浅色模式',
     'dark': '深色模式',
     'auto_device': '自动（设备）',
@@ -209,11 +216,21 @@ final Map<String, Map<String, String>> _translations = {
     'alarm_volume': '闹钟音量',
     'alarm_test': '测试声音',
     'alarm_hint': '点击祷告时间旁边的闹钟图标可打开/关闭提醒。',
+    'alarm_play_error': '播放闹钟声音失败，请重新选择文件。',
     'alarm_select_prayers': '选择祷告时间',
     'ui_size': 'UI 大小',
     'ui_size_preview': '实时预览',
   },
 };
+
+// Data next-prayer yang di-tick tiap detik lewat ValueNotifier (lihat penjelasan
+// di field _nextPrayerNotifier pada _JadwalSholatScreenState).
+class _NextPrayerInfo {
+  final Duration remaining;
+  final String prayerKey;
+  final bool isNextDay;
+  const _NextPrayerInfo({required this.remaining, required this.prayerKey, required this.isNextDay});
+}
 
 class MyApp extends StatefulWidget {
   final SharedPreferences prefs;
@@ -343,9 +360,18 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
   late PrayerTimes _prayerTimes;
 
   Timer? _timer;
-  Duration _timeToNextPrayer = Duration.zero;
-  String _nextPrayerKey = 'fajr';
-  bool _isNextDay = false;
+  // Data next-prayer/countdown dipindah ke ValueNotifier: update tiap detik lewat
+  // notifier ini TIDAK memanggil setState() layar penuh, jadi cuma widget yang
+  // dengar (ValueListenableBuilder di kartu countdown) yang rebuild tiap detik —
+  // bukan seluruh layar (list waktu sholat, bar lokasi, menu bawah, dst).
+  final ValueNotifier<_NextPrayerInfo> _nextPrayerNotifier =
+      ValueNotifier(const _NextPrayerInfo(remaining: Duration.zero, prayerKey: 'fajr', isNextDay: false));
+  // Notifier terpisah khusus buat penanda kartu "waktu sholat berikutnya" (ambient
+  // glow). Dipisah dari _nextPrayerNotifier supaya list waktu sholat TIDAK ikut
+  // rebuild tiap detik — ValueNotifier hanya notify listener kalau value-nya
+  // benar-benar berubah (lihat setter bawaan Flutter), jadi walau kita assign
+  // string yang sama tiap detik, UI cuma rebuild pas prayer key-nya ganti.
+  final ValueNotifier<String> _highlightedPrayerKeyNotifier = ValueNotifier('fajr');
   bool _isLoadingGps = false;
   String _alarmMode = 'ring';
   String? _customAlarmPath;
@@ -452,6 +478,7 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
 
   Future<void> _previewAlarmSound() async {
     try {
+      await _audioPlayer?.stop();
       if (_customAlarmBytes != null) {
         final uri = Uri.dataFromBytes(
           _customAlarmBytes!,
@@ -465,8 +492,13 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
       }
       await _audioPlayer?.setVolume(_alarmVolume);
       await _audioPlayer?.play();
-    } catch (_) {
-      // Abaikan error playback (mis. file tidak valid / tidak didukung browser)
+    } catch (e) {
+      // Dulu error di sini ditelan diam-diam (catch (_) {}), jadi kalau file
+      // gagal diputar (format tidak didukung, path tidak valid, dll) tidak ada
+      // tanda apa pun ke user — kelihatan seperti tombolnya tidak berfungsi.
+      // Sekarang errornya ditampilkan lewat SnackBar + dicatat ke console.
+      debugPrint('Alarm playback error: $e');
+      _showSnackBar(_t('alarm_play_error'));
     }
   }
 
@@ -484,7 +516,13 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
     for (final entry in prayerTimes.entries) {
       if (!_alarmPrayerTimes.contains(entry.key)) continue;
       final target = entry.value;
-      if (now.hour == target.hour && now.minute == target.minute && now.second == target.second) {
+      // FIX: sebelumnya syaratnya `now.second == target.second` (harus PAS di
+      // detik yang sama). Timer kita jalan tiap ~1 detik tapi tidak dijamin
+      // presisi ke detik yang exact sama dengan target (bisa drift dikit),
+      // jadi alarm gampang kelewat & tidak pernah bunyi. Sekarang dicek pakai
+      // jendela toleransi: 0-2 detik SETELAH waktu sholat, jauh lebih andal.
+      final diffSeconds = now.difference(target).inSeconds;
+      if (diffSeconds >= 0 && diffSeconds <= 2) {
         if (_lastAlarmPlayedAt == null || now.difference(_lastAlarmPlayedAt!).inSeconds >= 60) {
           _playAlarmSound();
           _lastAlarmPlayedAt = now;
@@ -556,20 +594,23 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
         params,
       );
       if (mounted) {
-        setState(() {
-          _nextPrayerKey = 'fajr';
-          _isNextDay = true;
-          _timeToNextPrayer = tomorrowPrayers.fajr.difference(now);
-        });
+        _nextPrayerNotifier.value = _NextPrayerInfo(
+          remaining: tomorrowPrayers.fajr.difference(now),
+          prayerKey: 'fajr',
+          isNextDay: true,
+        );
+        _highlightedPrayerKeyNotifier.value = 'fajr';
       }
     } else {
       final nextTime = _prayerTimes.timeForPrayer(next);
       if (nextTime != null && mounted) {
-        setState(() {
-          _nextPrayerKey = _getPrayerKey(next);
-          _isNextDay = false;
-          _timeToNextPrayer = nextTime.difference(now);
-        });
+        final key = _getPrayerKey(next);
+        _nextPrayerNotifier.value = _NextPrayerInfo(
+          remaining: nextTime.difference(now),
+          prayerKey: key,
+          isNextDay: false,
+        );
+        _highlightedPrayerKeyNotifier.value = key;
       }
     }
     if (mounted) {
@@ -849,7 +890,7 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
                           isDark: isDark,
                           value: localThemeMode,
                           options: [
-                            _SegmentOption(value: ThemeMode.system, label: _t('system_default'), icon: Icons.smartphone_rounded),
+                            _SegmentOption(value: ThemeMode.system, label: _t('theme_system_short'), icon: Icons.smartphone_rounded),
                             _SegmentOption(value: ThemeMode.light, label: _t('light'), icon: Icons.light_mode_rounded),
                             _SegmentOption(value: ThemeMode.dark, label: _t('dark'), icon: Icons.dark_mode_rounded),
                           ],
@@ -1442,13 +1483,17 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
   @override
   void dispose() {
     _timer?.cancel();
+    _nextPrayerNotifier.dispose();
+    _highlightedPrayerKeyNotifier.dispose();
+    _audioPlayer?.dispose();
     super.dispose();
   }
 
   void _openNextPrayerPopup() {
+    final info = _nextPrayerNotifier.value;
     DateTime prayerTime;
-    String nextName = _t(_nextPrayerKey);
-    if (_isNextDay && _nextPrayerKey == 'fajr') {
+    String nextName = _t(info.prayerKey);
+    if (info.isNextDay && info.prayerKey == 'fajr') {
       final params = _selectedMethod.getParameters();
       final tomorrowPrayers = PrayerTimes(
         _currentCoordinates,
@@ -1458,7 +1503,7 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
       prayerTime = tomorrowPrayers.fajr;
       nextName = _t('fajr_tomorrow');
     } else {
-      final prayer = _prayerFromKey(_nextPrayerKey);
+      final prayer = _prayerFromKey(info.prayerKey);
       prayerTime = _prayerTimes.timeForPrayer(prayer) ?? DateTime.now();
     }
 
@@ -1472,11 +1517,6 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final primaryTextColor = isDark ? Colors.white : const Color(0xFF1C1C1E);
     final cardBgColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
-
-    String nextName = _t(_nextPrayerKey);
-    if (_isNextDay && _nextPrayerKey == 'fajr') {
-      nextName = _t('fajr_tomorrow');
-    }
 
     return MediaQuery(
       data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(_uiScale)),
@@ -1597,28 +1637,36 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
                       color: isDark ? const Color(0xFF252525) : const Color(0xFF1C1C1E),
                       borderRadius: BorderRadius.circular(20),
                     ),
-                    child: Column(
-                      children: [
-                        Text(
-                          '${_t("towards")} ${nextName.toUpperCase()}',
-                          style: const TextStyle(
-                            color: Colors.white54,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: 1.5,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          _formatDuration(_timeToNextPrayer),
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 42,
-                            fontWeight: FontWeight.w300,
-                            letterSpacing: 2,
-                          ),
-                        ),
-                      ],
+                    child: ValueListenableBuilder<_NextPrayerInfo>(
+                      valueListenable: _nextPrayerNotifier,
+                      builder: (context, info, _) {
+                        final nextName = (info.isNextDay && info.prayerKey == 'fajr')
+                            ? _t('fajr_tomorrow')
+                            : _t(info.prayerKey);
+                        return Column(
+                          children: [
+                            Text(
+                              '${_t("towards")} ${nextName.toUpperCase()}',
+                              style: const TextStyle(
+                                color: Colors.white54,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: 1.5,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              _formatDuration(info.remaining),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 42,
+                                fontWeight: FontWeight.w300,
+                                letterSpacing: 2,
+                              ),
+                            ),
+                          ],
+                        );
+                      },
                     ),
                   ),
                 ),
@@ -1767,15 +1815,69 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
             ? Colors.white38
             : Colors.black38;
 
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeOut,
-      margin: const EdgeInsets.symmetric(vertical: 4.0),
-      decoration: BoxDecoration(
-        color: cardBg,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: isDark ? Colors.transparent : Colors.black.withAlpha((0.05 * 255).round())),
-      ),
+    // Konten kartu (baris nama+jam+tombol alarm) tidak bergantung pada status
+    // "next prayer", jadi dikirim lewat parameter `child` dari ValueListenableBuilder
+    // biar subtree ini TIDAK ikut dibangun ulang tiap kali kartu lain jadi next.
+    return ValueListenableBuilder<String>(
+      valueListenable: _highlightedPrayerKeyNotifier,
+      builder: (context, highlightedKey, cardContent) {
+        final isNext = highlightedKey == prayerKey;
+        // Ambient light minimalis 3 warna (biru - ungu - peach) buat nandain
+        // kartu waktu sholat berikutnya, biar sekali lirik langsung kelihatan.
+        const glowBlue = Color(0xFF6EC6FF);
+        const glowPurple = Color(0xFFB48CFF);
+        const glowPeach = Color(0xFFFFB199);
+
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 350),
+          curve: Curves.easeOut,
+          margin: const EdgeInsets.symmetric(vertical: 4.0),
+          decoration: BoxDecoration(
+            color: cardBg,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: isNext
+                  ? glowPurple.withValues(alpha: isDark ? 0.45 : 0.35)
+                  : (isDark ? Colors.transparent : Colors.black.withAlpha((0.05 * 255).round())),
+              width: isNext ? 1.3 : 1,
+            ),
+            gradient: isNext
+                ? LinearGradient(
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                    colors: [
+                      glowBlue.withValues(alpha: isDark ? 0.16 : 0.10),
+                      glowPurple.withValues(alpha: isDark ? 0.14 : 0.09),
+                      glowPeach.withValues(alpha: isDark ? 0.16 : 0.10),
+                    ],
+                  )
+                : null,
+            boxShadow: isNext
+                ? [
+                    BoxShadow(
+                      color: glowBlue.withValues(alpha: isDark ? 0.22 : 0.16),
+                      blurRadius: 16,
+                      spreadRadius: -6,
+                      offset: const Offset(-8, 2),
+                    ),
+                    BoxShadow(
+                      color: glowPurple.withValues(alpha: isDark ? 0.20 : 0.14),
+                      blurRadius: 18,
+                      spreadRadius: -6,
+                      offset: const Offset(0, 6),
+                    ),
+                    BoxShadow(
+                      color: glowPeach.withValues(alpha: isDark ? 0.22 : 0.16),
+                      blurRadius: 16,
+                      spreadRadius: -6,
+                      offset: const Offset(8, 2),
+                    ),
+                  ]
+                : null,
+          ),
+          child: cardContent,
+        );
+      },
       child: Material(
         color: Colors.transparent,
         child: InkWell(
@@ -1944,26 +2046,31 @@ class _AnimatedSegmentedToggle<T> extends StatelessWidget {
         onTap: onTap,
         child: SizedBox(
           height: 44,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              AnimatedDefaultTextStyle(
-                duration: const Duration(milliseconds: 200),
-                style: TextStyle(
-                  color: color,
-                  fontSize: 13,
-                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(icon, size: 15, color: color),
+                const SizedBox(width: 5),
+                Flexible(
+                  child: AnimatedDefaultTextStyle(
+                    duration: const Duration(milliseconds: 200),
+                    style: TextStyle(
+                      color: color,
+                      fontSize: 12,
+                      fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                    ),
+                    child: Text(
+                      label,
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
+                      softWrap: false,
+                    ),
+                  ),
                 ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(icon, size: 16, color: color),
-                    const SizedBox(width: 6),
-                    Flexible(child: Text(label, overflow: TextOverflow.ellipsis)),
-                  ],
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
