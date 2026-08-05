@@ -394,12 +394,14 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
   AudioPlayer? _audioPlayer;
   DateTime? _lastAlarmPlayedAt;
   DateTime _lastCalculatedDate = DateTime.now();
-  // Controller buat efek "napas" (breathing glow) di kartu waktu sholat
-  // berikutnya. Siklus penuh ~4 detik (2 detik naik + 2 detik turun), jadi
-  // pulsing-nya berulang tiap ~4 detik — sesuai request: kelihatan pas app
-  // dibuka, lalu terus berulang dengan interval beberapa detik, bukan nyala
-  // diam statis.
+  // Controller buat efek "liquid glass shine" di kartu waktu sholat berikutnya.
+  // Sekarang dipecah jadi 2 fase dalam 1 siklus: fase sapuan (kilapan beneran
+  // lewat, kecepatannya TETAP sama kayak sebelumnya — lihat _shineSweepMs) lalu
+  // fase diam/nunggu (nggak kelihatan sama sekali) sampai siklus abis. Total
+  // siklus (jarak antar kilapan) sekarang 6.5 detik, di rentang 5-7.5 detik.
   late AnimationController _glowPulseController;
+  static const int _shineCycleMs = 5000; // jarak antar kilapan (5-7.5 dtk)
+  static const int _shineSweepMs = 2200; // durasi 1x sapuan — kecepatan shine, jangan diubah
 
   @override
   void initState() {
@@ -408,12 +410,9 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
     _loadSavedAlarmSettings();
     _loadSavedUiScale();
     _audioPlayer = AudioPlayer();
-    // Controller buat efek "liquid glass shine" di kartu waktu sholat
-    // berikutnya — cahaya tipis yang menyapu diagonal berulang terus,
-    // 1 arah (bukan bolak-balik), siklus ~2.5 detik.
     _glowPulseController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 2500),
+      duration: const Duration(milliseconds: _shineCycleMs),
     )..repeat();
     _calculatePrayers();
     _timer = Timer.periodic(const Duration(seconds: 1), (_) => _updateCountdown());
@@ -1840,39 +1839,91 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
             ? Colors.white38
             : Colors.black38;
 
-    // Konten kartu (baris nama+jam+tombol alarm) tidak bergantung pada status
-    // "next prayer", jadi dikirim lewat parameter `child` dari ValueListenableBuilder
-    // biar subtree ini TIDAK ikut dibangun ulang tiap kali kartu lain jadi next.
     return ValueListenableBuilder<String>(
       valueListenable: _highlightedPrayerKeyNotifier,
-      builder: (context, highlightedKey, cardContent) {
+      builder: (context, highlightedKey, _) {
         final isNext = highlightedKey == prayerKey;
 
-        // Ikon panah minimalis, fade+slide masuk/keluar cuma pas status
-        // next-prayer berubah (bukan tiap detik) — jadi ini murah, nggak
-        // dipengaruhi oleh animasi glow di bawah.
-        final leadingArrow = AnimatedSwitcher(
-          duration: const Duration(milliseconds: 250),
-          transitionBuilder: (child, anim) => FadeTransition(
-            opacity: anim,
-            child: SizeTransition(sizeFactor: anim, axis: Axis.horizontal, child: child),
-          ),
-          child: isNext
-              ? Padding(
-                  key: const ValueKey('arrow_visible'),
-                  padding: const EdgeInsets.only(left: 16, right: 2),
-                  child: Icon(
-                    Icons.chevron_right_rounded,
-                    size: 15,
-                    color: isDark ? Colors.white60 : const Color(0xFF8A8F98),
+        final cardInner = Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onLongPress: () {
+              HapticFeedback.selectionClick();
+              _showPrayerDetailPopup(
+                prayerName: name,
+                prayerTime: time,
+              );
+            },
+            child: ListTile(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+              minLeadingWidth: 0,
+              horizontalTitleGap: isNext ? 6 : 0,
+              leading: isNext
+                  ? Icon(
+                      Icons.chevron_right_rounded,
+                      size: 16,
+                      color: isDark ? Colors.white60 : const Color(0xFF8A8F98),
+                    )
+                  : null,
+              title: Text(
+                name,
+                style: TextStyle(fontWeight: FontWeight.w500, fontSize: 14, color: textColor.withAlpha((0.8 * 255).round())),
+              ),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    DateFormat.Hm().format(time),
+                    style: TextStyle(fontSize: 18, color: textColor, fontWeight: FontWeight.bold),
                   ),
-                )
-              : const SizedBox(key: ValueKey('arrow_hidden'), width: 0),
+                  const SizedBox(width: 12),
+                  InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: () {
+                      setState(() {
+                        if (alarmActive) {
+                          _alarmPrayerTimes.remove(prayerKey);
+                        } else {
+                          _alarmPrayerTimes.add(prayerKey);
+                        }
+                        _saveAlarmSettings();
+                      });
+                    },
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 220),
+                      curve: Curves.easeOut,
+                      width: 34,
+                      height: 34,
+                      decoration: BoxDecoration(
+                        color: alarmActive
+                            ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.16)
+                            : isDark
+                                ? const Color(0xFF2C2C2E)
+                                : const Color(0xFFF0F0F3),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 200),
+                        transitionBuilder: (child, anim) => ScaleTransition(
+                          scale: anim,
+                          child: FadeTransition(opacity: anim, child: child),
+                        ),
+                        child: Icon(
+                          alarmActive ? Icons.alarm_on_rounded : Icons.alarm_outlined,
+                          key: ValueKey(alarmActive),
+                          color: iconColor,
+                          size: 20,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
         );
 
-        // Untuk kartu yang BUKAN next-prayer, nggak perlu ikut-ikutan
-        // dengerin _glowPulseController sama sekali (biar 4 kartu lain
-        // nggak rebuild tiap tick animasi, cuma yang 1 kartu next aja).
         if (!isNext) {
           return AnimatedContainer(
             duration: const Duration(milliseconds: 350),
@@ -1885,144 +1936,173 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
                 color: isDark ? Colors.transparent : Colors.black.withAlpha((0.05 * 255).round()),
               ),
             ),
-            child: Row(children: [leadingArrow, Expanded(child: cardContent!)]),
+            child: cardInner,
           );
         }
 
-        // Kartu next-prayer: efek "liquid glass" — dasar kartu dikasih tint
-        // kaca tipis netral (bukan warna-warni), lalu ada cahaya putih tipis
-        // yang menyapu diagonal berulang terus (kayak kilau di permukaan
-        // kaca/liquid glass), TANPA ambience warna dulu — biar simpel.
-        return AnimatedBuilder(
-          animation: _glowPulseController,
-          builder: (context, _) {
-            final t = _glowPulseController.value; // 0 -> 1 looping searah
-            // Garis gradient (begin/end) digeser bareng dari jauh di kiri ke
-            // jauh di kanan, jadi highlight-nya "menyapu" lewat seluruh kartu.
-            final shift = -2.2 + 4.4 * t;
+        // Kartu next-prayer: efek "liquid glass" — dasar kartu dikasih tint kaca
+        // tipis netral, lalu ada cahaya putih tipis yang menyapu diagonal
+        // berulang terus. Siklus dipecah 2 fase (lihat builder di bawah):
+        // fase sapuan (kilapan beneran lewat + fade in/out di ujungnya) lalu
+        // fase diam (nggak kelihatan sama sekali) sampai siklus berikutnya.
+        //
+        // FIX clipping: sebelumnya margin ada DI DALAM ClipRRect (nempel di
+        // Container yang di-clip), jadi kotak yang di-clip lebih besar dari
+        // kartu yang kelihatan (karena margin ikut dihitung), sementara sapuan
+        // cahaya mengisi penuh kotak konten yang PERSIS sama luasnya dengan
+        // kartu -> sudut sapuan cahaya yang lurus/kotak nongol melewati sudut
+        // tumpul kartu. Sekarang margin dipindah ke Padding DI LUAR ClipRRect,
+        // supaya area yang di-clip presis sama dengan bentuk kartu (radius 12),
+        // dan AnimatedBuilder pakai parameter `child` biar cardInner (yang
+        // nggak berubah tiap frame) nggak ikut dibangun ulang tiap tick animasi.
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4.0),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: AnimatedBuilder(
+              animation: _glowPulseController,
+              builder: (context, child) {
+                // Siklus dipecah 2 fase: 0..sweepMs = kilapan beneran lewat
+                // (progress 0->1, shift jalan penuh kayak sebelumnya, kecepatan
+                // TIDAK berubah), sisanya = fase diam, shine nggak digambar
+                // sama sekali sampai siklus berikutnya mulai.
+                final elapsedMs = _glowPulseController.value * _shineCycleMs;
+                double progress;
+                double envelope; // 0..1, buat fade in/out si kilapan
+                if (elapsedMs <= _shineSweepMs) {
+                  progress = elapsedMs / _shineSweepMs;
+                  if (progress < 0.18) {
+                    envelope = progress / 0.18; // fade in cepat di awal
+                  } else if (progress > 0.55) {
+                    // fade out landai di ekor kilapan biar nggak putus mendadak
+                    envelope = (1 - (progress - 0.55) / 0.45).clamp(0.0, 1.0);
+                  } else {
+                    envelope = 1.0;
+                  }
+                } else {
+                  progress = 1.0;
+                  envelope = 0.0; // fase diam
+                }
+                // Garis gradient (begin/end) digeser bareng dari jauh di kiri ke
+                // jauh di kanan, jadi highlight-nya "menyapu" lewat seluruh kartu.
+                final shift = -2.2 + 4.4 * progress;
 
-            return ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: Container(
-                margin: const EdgeInsets.symmetric(vertical: 4.0),
-                decoration: BoxDecoration(
-                  color: cardBg,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: isDark ? 0.16 : 0.4),
-                    width: 1.2,
+                // Offset dikit buat 2 lapis fringe warna (cyan & magenta) di
+                // kiri-kanan sapuan utama -> efek dispersi cahaya ala kaca
+                // prisma (lihat referensi). Jaraknya sengaja kecil (0.05) &
+                // alpha-nya rendah banget supaya cuma kerasa "dikit" di tepi,
+                // bukan pelangi mencolok.
+                final cyanShift = shift - 0.05;
+                final magentaShift = shift + 0.05;
+
+                return Container(
+                  decoration: BoxDecoration(
+                    color: cardBg,
+                    // FIX: dulu Container ini nggak punya borderRadius sama
+                    // sekali, padahal dia dibungkus ClipRRect(radius 12) di
+                    // luar. Border-nya jadinya digambar KOTAK LURUS dulu baru
+                    // dipotong paksa sama ClipRRect di keempat sudut -> muncul
+                    // notch/celah kecil pas ketemu kartu tetangga (Dhuhr &
+                    // Maghrib). Sekarang borderRadius disamakan (12) biar
+                    // border ikut melengkung dari awal, nggak kepotong lagi.
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: isDark ? 0.16 : 0.4),
+                      width: 1.2,
+                    ),
+                    // Tint kaca tipis netral, konstan (nggak ikut animasi)
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        Colors.white.withValues(alpha: isDark ? 0.05 : 0.12),
+                        Colors.white.withValues(alpha: 0.0),
+                      ],
+                    ),
                   ),
-                  // Tint kaca tipis netral, konstan (nggak ikut animasi)
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      Colors.white.withValues(alpha: isDark ? 0.05 : 0.12),
-                      Colors.white.withValues(alpha: 0.0),
-                    ],
-                  ),
-                ),
-                child: Stack(
-                  children: [
-                    Row(children: [leadingArrow, Expanded(child: cardContent!)]),
-                    // Overlay sapuan cahaya (shine) - IgnorePointer biar nggak
-                    // ganggu tap/long-press di kartu.
-                    Positioned.fill(
-                      child: IgnorePointer(
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment(-1 + shift, -1),
-                              end: Alignment(1 + shift, 1),
-                              stops: const [0.35, 0.5, 0.65],
-                              colors: [
-                                Colors.transparent,
-                                Colors.white.withValues(alpha: isDark ? 0.14 : 0.55),
-                                Colors.transparent,
-                              ],
+                  child: Stack(
+                    children: [
+                      child!,
+                      // Overlay sapuan cahaya (shine) - IgnorePointer biar nggak
+                      // ganggu tap/long-press di kartu. Ke-clip presis sesuai
+                      // bentuk kartu lewat ClipRRect di luar, dan memudar
+                      // (fade in/out) lewat `envelope`. Sekarang ada 3 lapis:
+                      // fringe cyan, band utama (gold pucat), fringe magenta —
+                      // biar kerasa dispersi kaca kayak referensi, tapi tetep
+                      // tipis banget.
+                      Positioned.fill(
+                        child: IgnorePointer(
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment(-1 + cyanShift, -1),
+                                end: Alignment(1 + cyanShift, 1),
+                                stops: const [0.4, 0.5, 0.6],
+                                colors: [
+                                  Colors.transparent,
+                                  const Color(0xFF8FE9FF)
+                                      .withValues(alpha: (isDark ? 0.06 : 0.16) * envelope),
+                                  Colors.transparent,
+                                ],
+                              ),
                             ),
                           ),
                         ),
                       ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        );
-      },
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(12),
-          // Trigger Long-Press Popup di sini
-          onLongPress: () {
-            HapticFeedback.selectionClick();
-            _showPrayerDetailPopup(
-              prayerName: name,
-              prayerTime: time,
-            );
-          },
-          child: ListTile(
-            contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 2),
-            title: Text(
-              name,
-              style: TextStyle(fontWeight: FontWeight.w500, fontSize: 14, color: textColor.withAlpha((0.8 * 255).round())),
-            ),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  DateFormat.Hm().format(time),
-                  style: TextStyle(fontSize: 18, color: textColor, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(width: 12),
-                InkWell(
-                  borderRadius: BorderRadius.circular(12),
-                  onTap: () {
-                    setState(() {
-                      if (alarmActive) {
-                        _alarmPrayerTimes.remove(prayerKey);
-                      } else {
-                        _alarmPrayerTimes.add(prayerKey);
-                      }
-                      _saveAlarmSettings();
-                    });
-                  },
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 220),
-                    curve: Curves.easeOut,
-                    width: 34,
-                    height: 34,
-                    decoration: BoxDecoration(
-                      color: alarmActive
-                          ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.16)
-                          : isDark
-                              ? const Color(0xFF2C2C2E)
-                              : const Color(0xFFF0F0F3),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 200),
-                      transitionBuilder: (child, anim) => ScaleTransition(
-                        scale: anim,
-                        child: FadeTransition(opacity: anim, child: child),
+                      Positioned.fill(
+                        child: IgnorePointer(
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment(-1 + shift, -1),
+                                end: Alignment(1 + shift, 1),
+                                stops: const [0.35, 0.5, 0.65],
+                                colors: [
+                                  Colors.transparent,
+                                  Color.lerp(
+                                    Colors.white,
+                                    const Color(0xFFFFE3B0),
+                                    0.12,
+                                  )!.withValues(alpha: (isDark ? 0.14 : 0.55) * envelope),
+                                  Colors.transparent,
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
                       ),
-                      child: Icon(
-                        alarmActive ? Icons.alarm_on_rounded : Icons.alarm_outlined,
-                        key: ValueKey(alarmActive),
-                        color: iconColor,
-                        size: 20,
+                      Positioned.fill(
+                        child: IgnorePointer(
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment(-1 + magentaShift, -1),
+                                end: Alignment(1 + magentaShift, 1),
+                                stops: const [0.4, 0.5, 0.6],
+                                colors: [
+                                  Colors.transparent,
+                                  const Color(0xFFFF9ED2)
+                                      .withValues(alpha: (isDark ? 0.06 : 0.16) * envelope),
+                                  Colors.transparent,
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
                       ),
-                    ),
+                    ],
                   ),
-                ),
-              ],
+                );
+              },
+              // `child` di sini = cardInner. AnimatedBuilder cuma manggil ulang
+              // `builder` tiap tick, TAPI `child` (ListTile/InkWell/Material)
+              // dibangun sekali dan dipakai ulang terus — jadi animasi shine
+              // murah, nggak ikut rebuild seluruh konten kartu tiap frame.
+              child: cardInner,
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }
