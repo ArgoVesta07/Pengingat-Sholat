@@ -11,6 +11,7 @@ dependencies:
   flutter:
     sdk: flutter
   cupertino_icons: ^1.0.8
+  google_fonts: ^4.0.4
   adhan: ^2.0.0+1
   intl: ^0.20.3
   geolocator: ^14.0.2
@@ -27,3 +28,11 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  fonts:
+    - family: MontserratAlternates
+      fonts:
+        - asset: assets/fonts/MontserratAlternates-Regular.ttf
+        - asset: assets/fonts/MontserratAlternates-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/MontserratAlternates-Bold.ttf
+          weight: 700

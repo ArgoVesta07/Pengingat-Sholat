@@ -272,7 +272,14 @@ class _MyAppState extends State<MyApp> {
       debugShowCheckedModeBanner: false,
       title: 'PrayTime',
       themeMode: _themeMode,
-      theme: ThemeData.light().copyWith(
+      // FIX: ThemeData.light().copyWith(fontFamily: ...) ERROR karena copyWith()
+      // pada ThemeData tidak menyediakan parameter fontFamily (keterbatasan
+      // bawaan Flutter). Solusinya: bangun ThemeData langsung lewat constructor
+      // biasa (bukan .light().copyWith()/.dark().copyWith()), karena constructor
+      // ThemeData() punya parameter fontFamily.
+      theme: ThemeData(
+        brightness: Brightness.light,
+        fontFamily: 'MontserratAlternates',
         scaffoldBackgroundColor: const Color(0xFFF5F5F7),
         cardColor: Colors.white,
         colorScheme: const ColorScheme.light(
@@ -285,6 +292,7 @@ class _MyAppState extends State<MyApp> {
           elevation: 0,
           centerTitle: true,
           titleTextStyle: TextStyle(
+            fontFamily: 'MontserratAlternates',
             color: Color(0xFF1C1C1E),
             fontSize: 18,
             fontWeight: FontWeight.w700,
@@ -293,7 +301,9 @@ class _MyAppState extends State<MyApp> {
           iconTheme: IconThemeData(color: Color(0xFF1C1C1E)),
         ),
       ),
-      darkTheme: ThemeData.dark().copyWith(
+      darkTheme: ThemeData(
+        brightness: Brightness.dark,
+        fontFamily: 'MontserratAlternates',
         scaffoldBackgroundColor: const Color(0xFF121212),
         cardColor: const Color(0xFF1E1E1E),
         colorScheme: const ColorScheme.dark(
@@ -306,6 +316,7 @@ class _MyAppState extends State<MyApp> {
           elevation: 0,
           centerTitle: true,
           titleTextStyle: TextStyle(
+            fontFamily: 'MontserratAlternates',
             color: Colors.white,
             fontSize: 18,
             fontWeight: FontWeight.w700,
@@ -345,7 +356,7 @@ class JadwalSholatScreen extends StatefulWidget {
   State<JadwalSholatScreen> createState() => _JadwalSholatScreenState();
 }
 
-class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
+class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTickerProviderStateMixin {
   final Map<String, CalculationMethod> _calcMethods = {
     'Muslim World League (Global / Jepang)': CalculationMethod.muslim_world_league,
     'Kemenag / Singapore (SE Asia)': CalculationMethod.singapore,
@@ -383,6 +394,12 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
   AudioPlayer? _audioPlayer;
   DateTime? _lastAlarmPlayedAt;
   DateTime _lastCalculatedDate = DateTime.now();
+  // Controller buat efek "napas" (breathing glow) di kartu waktu sholat
+  // berikutnya. Siklus penuh ~4 detik (2 detik naik + 2 detik turun), jadi
+  // pulsing-nya berulang tiap ~4 detik — sesuai request: kelihatan pas app
+  // dibuka, lalu terus berulang dengan interval beberapa detik, bukan nyala
+  // diam statis.
+  late AnimationController _glowPulseController;
 
   @override
   void initState() {
@@ -391,6 +408,13 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
     _loadSavedAlarmSettings();
     _loadSavedUiScale();
     _audioPlayer = AudioPlayer();
+    // Controller buat efek "liquid glass shine" di kartu waktu sholat
+    // berikutnya — cahaya tipis yang menyapu diagonal berulang terus,
+    // 1 arah (bukan bolak-balik), siklus ~2.5 detik.
+    _glowPulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2500),
+    )..repeat();
     _calculatePrayers();
     _timer = Timer.periodic(const Duration(seconds: 1), (_) => _updateCountdown());
   }
@@ -1485,6 +1509,7 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
     _timer?.cancel();
     _nextPrayerNotifier.dispose();
     _highlightedPrayerKeyNotifier.dispose();
+    _glowPulseController.dispose();
     _audioPlayer?.dispose();
     super.dispose();
   }
@@ -1822,60 +1847,109 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> {
       valueListenable: _highlightedPrayerKeyNotifier,
       builder: (context, highlightedKey, cardContent) {
         final isNext = highlightedKey == prayerKey;
-        // Ambient light minimalis 3 warna (biru - ungu - peach) buat nandain
-        // kartu waktu sholat berikutnya, biar sekali lirik langsung kelihatan.
-        const glowBlue = Color(0xFF6EC6FF);
-        const glowPurple = Color(0xFFB48CFF);
-        const glowPeach = Color(0xFFFFB199);
 
-        return AnimatedContainer(
-          duration: const Duration(milliseconds: 350),
-          curve: Curves.easeOut,
-          margin: const EdgeInsets.symmetric(vertical: 4.0),
-          decoration: BoxDecoration(
-            color: cardBg,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: isNext
-                  ? glowPurple.withValues(alpha: isDark ? 0.45 : 0.35)
-                  : (isDark ? Colors.transparent : Colors.black.withAlpha((0.05 * 255).round())),
-              width: isNext ? 1.3 : 1,
-            ),
-            gradient: isNext
-                ? LinearGradient(
-                    begin: Alignment.centerLeft,
-                    end: Alignment.centerRight,
-                    colors: [
-                      glowBlue.withValues(alpha: isDark ? 0.16 : 0.10),
-                      glowPurple.withValues(alpha: isDark ? 0.14 : 0.09),
-                      glowPeach.withValues(alpha: isDark ? 0.16 : 0.10),
-                    ],
-                  )
-                : null,
-            boxShadow: isNext
-                ? [
-                    BoxShadow(
-                      color: glowBlue.withValues(alpha: isDark ? 0.22 : 0.16),
-                      blurRadius: 16,
-                      spreadRadius: -6,
-                      offset: const Offset(-8, 2),
-                    ),
-                    BoxShadow(
-                      color: glowPurple.withValues(alpha: isDark ? 0.20 : 0.14),
-                      blurRadius: 18,
-                      spreadRadius: -6,
-                      offset: const Offset(0, 6),
-                    ),
-                    BoxShadow(
-                      color: glowPeach.withValues(alpha: isDark ? 0.22 : 0.16),
-                      blurRadius: 16,
-                      spreadRadius: -6,
-                      offset: const Offset(8, 2),
-                    ),
-                  ]
-                : null,
+        // Ikon panah minimalis, fade+slide masuk/keluar cuma pas status
+        // next-prayer berubah (bukan tiap detik) — jadi ini murah, nggak
+        // dipengaruhi oleh animasi glow di bawah.
+        final leadingArrow = AnimatedSwitcher(
+          duration: const Duration(milliseconds: 250),
+          transitionBuilder: (child, anim) => FadeTransition(
+            opacity: anim,
+            child: SizeTransition(sizeFactor: anim, axis: Axis.horizontal, child: child),
           ),
-          child: cardContent,
+          child: isNext
+              ? Padding(
+                  key: const ValueKey('arrow_visible'),
+                  padding: const EdgeInsets.only(left: 16, right: 2),
+                  child: Icon(
+                    Icons.chevron_right_rounded,
+                    size: 15,
+                    color: isDark ? Colors.white60 : const Color(0xFF8A8F98),
+                  ),
+                )
+              : const SizedBox(key: ValueKey('arrow_hidden'), width: 0),
+        );
+
+        // Untuk kartu yang BUKAN next-prayer, nggak perlu ikut-ikutan
+        // dengerin _glowPulseController sama sekali (biar 4 kartu lain
+        // nggak rebuild tiap tick animasi, cuma yang 1 kartu next aja).
+        if (!isNext) {
+          return AnimatedContainer(
+            duration: const Duration(milliseconds: 350),
+            curve: Curves.easeOut,
+            margin: const EdgeInsets.symmetric(vertical: 4.0),
+            decoration: BoxDecoration(
+              color: cardBg,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: isDark ? Colors.transparent : Colors.black.withAlpha((0.05 * 255).round()),
+              ),
+            ),
+            child: Row(children: [leadingArrow, Expanded(child: cardContent!)]),
+          );
+        }
+
+        // Kartu next-prayer: efek "liquid glass" — dasar kartu dikasih tint
+        // kaca tipis netral (bukan warna-warni), lalu ada cahaya putih tipis
+        // yang menyapu diagonal berulang terus (kayak kilau di permukaan
+        // kaca/liquid glass), TANPA ambience warna dulu — biar simpel.
+        return AnimatedBuilder(
+          animation: _glowPulseController,
+          builder: (context, _) {
+            final t = _glowPulseController.value; // 0 -> 1 looping searah
+            // Garis gradient (begin/end) digeser bareng dari jauh di kiri ke
+            // jauh di kanan, jadi highlight-nya "menyapu" lewat seluruh kartu.
+            final shift = -2.2 + 4.4 * t;
+
+            return ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                margin: const EdgeInsets.symmetric(vertical: 4.0),
+                decoration: BoxDecoration(
+                  color: cardBg,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: isDark ? 0.16 : 0.4),
+                    width: 1.2,
+                  ),
+                  // Tint kaca tipis netral, konstan (nggak ikut animasi)
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      Colors.white.withValues(alpha: isDark ? 0.05 : 0.12),
+                      Colors.white.withValues(alpha: 0.0),
+                    ],
+                  ),
+                ),
+                child: Stack(
+                  children: [
+                    Row(children: [leadingArrow, Expanded(child: cardContent!)]),
+                    // Overlay sapuan cahaya (shine) - IgnorePointer biar nggak
+                    // ganggu tap/long-press di kartu.
+                    Positioned.fill(
+                      child: IgnorePointer(
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment(-1 + shift, -1),
+                              end: Alignment(1 + shift, 1),
+                              stops: const [0.35, 0.5, 0.65],
+                              colors: [
+                                Colors.transparent,
+                                Colors.white.withValues(alpha: isDark ? 0.14 : 0.55),
+                                Colors.transparent,
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
         );
       },
       child: Material(
