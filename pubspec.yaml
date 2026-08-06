@@ -43,8 +43,9 @@ flutter:
 flutter_launcher_icons:
   android: true
   ios: true
+  image_path: "assets/logo1.png" # <-- Ditaruh di sini agar Android & iOS bisa baca
   web:
     generate: true
-    image_path: "assets/fonts/logo1.png"
+    image_path: "assets/logo1.png"
     background_color: "#12161F"
     theme_color: "#12161F"
