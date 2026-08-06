@@ -1681,10 +1681,19 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
                             const SizedBox(height: 8),
                             Text(
                               _formatDuration(info.remaining),
+                              // FIX FONT: sebelumnya style ini nggak menyebut fontFamily,
+                              // dan fontWeight w300 kemungkinan nggak tersedia di font
+                              // 'MontserratAlternates' (kalau varian weight itu nggak
+                              // di-bundle di pubspec), jadi Flutter fallback ke font
+                              // sistem/default -> angka countdown-nya kelihatan beda
+                              // font dibanding teks lain di app. Sekarang fontFamily
+                              // di-set eksplisit & fontWeight dipakai w600 (bold-ish,
+                              // aman karena weight ini yang biasanya selalu ke-load).
                               style: const TextStyle(
+                                fontFamily: 'MontserratAlternates',
                                 color: Colors.white,
                                 fontSize: 42,
-                                fontWeight: FontWeight.w300,
+                                fontWeight: FontWeight.w600,
                                 letterSpacing: 2,
                               ),
                             ),
@@ -1991,9 +2000,63 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
                 // kiri-kanan sapuan utama -> efek dispersi cahaya ala kaca
                 // prisma (lihat referensi). Jaraknya sengaja kecil (0.05) &
                 // alpha-nya rendah banget supaya cuma kerasa "dikit" di tepi,
-                // bukan pelangi mencolok.
+                // bukan pelangi mencolok. Ini CUMA dipakai di mode gelap.
                 final cyanShift = shift - 0.05;
                 final magentaShift = shift + 0.05;
+
+                // FIX MODE TERANG: efek dispersi warna (cyan/gold/magenta) di
+                // atas tadinya didesain buat background GELAP. Begitu
+                // cardBg-nya putih, warna-warna itu (betapa pun disesuaikan
+                // alpha & huenya) tetap kelihatan kayak noda/smear, bukan
+                // kilau kaca — soalnya konsepnya "warna pelangi tipis" nggak
+                // natural buat permukaan putih polos. Jadi buat mode terang
+                // dipakai pendekatan BEDA sama sekali: "glossy sweep" —
+                // cuma pakai kontras terang/gelap netral (bukan warna-warni),
+                // mirip kilau di kaca/logam yang dipoles. Card dasarnya juga
+                // dikasih tint krem tipis (bukan putih polos) supaya sapuan
+                // terangnya punya "kanvas" buat kelihatan — putih di atas
+                // putih polos nggak akan pernah kelihatan.
+                const lightCardTint = Color(0xFFFBF8F2); // krem sangat tipis
+                final lightBorderColor = Colors.black.withValues(alpha: 0.08);
+
+                if (!isDark) {
+                  return Container(
+                    decoration: BoxDecoration(
+                      color: lightCardTint,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: lightBorderColor, width: 1.2),
+                    ),
+                    child: Stack(
+                      children: [
+                        child!,
+                        // Glossy sweep: bayangan tipis -> garis terang putih -> bayangan
+                        // tipis lagi, nyapu diagonal bareng `shift`. Kontrasnya dari
+                        // terang/gelap netral, bukan dari warna, jadi kerasa natural
+                        // kayak refleksi cahaya di kaca/logam dipoles.
+                        Positioned.fill(
+                          child: IgnorePointer(
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment(-1 + shift, -1),
+                                  end: Alignment(1 + shift, 1),
+                                  stops: const [0.32, 0.46, 0.5, 0.54, 0.68],
+                                  colors: [
+                                    Colors.transparent,
+                                    Colors.black.withValues(alpha: 0.05 * envelope),
+                                    Colors.white.withValues(alpha: 0.85 * envelope),
+                                    Colors.black.withValues(alpha: 0.05 * envelope),
+                                    Colors.transparent,
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }
 
                 return Container(
                   decoration: BoxDecoration(
@@ -2007,7 +2070,7 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
                     // border ikut melengkung dari awal, nggak kepotong lagi.
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
-                      color: Colors.white.withValues(alpha: isDark ? 0.16 : 0.4),
+                      color: Colors.white.withValues(alpha: 0.16),
                       width: 1.2,
                     ),
                     // Tint kaca tipis netral, konstan (nggak ikut animasi)
@@ -2015,7 +2078,7 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                       colors: [
-                        Colors.white.withValues(alpha: isDark ? 0.05 : 0.12),
+                        Colors.white.withValues(alpha: 0.05),
                         Colors.white.withValues(alpha: 0.0),
                       ],
                     ),
@@ -2029,7 +2092,7 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
                       // (fade in/out) lewat `envelope`. Sekarang ada 3 lapis:
                       // fringe cyan, band utama (gold pucat), fringe magenta —
                       // biar kerasa dispersi kaca kayak referensi, tapi tetep
-                      // tipis banget.
+                      // tipis banget. (Khusus mode gelap — tidak diubah.)
                       Positioned.fill(
                         child: IgnorePointer(
                           child: DecoratedBox(
@@ -2040,8 +2103,7 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
                                 stops: const [0.4, 0.5, 0.6],
                                 colors: [
                                   Colors.transparent,
-                                  const Color(0xFF8FE9FF)
-                                      .withValues(alpha: (isDark ? 0.06 : 0.16) * envelope),
+                                  const Color(0xFF8FE9FF).withValues(alpha: 0.06 * envelope),
                                   Colors.transparent,
                                 ],
                               ),
@@ -2063,7 +2125,7 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
                                     Colors.white,
                                     const Color(0xFFFFE3B0),
                                     0.12,
-                                  )!.withValues(alpha: (isDark ? 0.14 : 0.55) * envelope),
+                                  )!.withValues(alpha: 0.14 * envelope),
                                   Colors.transparent,
                                 ],
                               ),
@@ -2081,8 +2143,7 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
                                 stops: const [0.4, 0.5, 0.6],
                                 colors: [
                                   Colors.transparent,
-                                  const Color(0xFFFF9ED2)
-                                      .withValues(alpha: (isDark ? 0.06 : 0.16) * envelope),
+                                  const Color(0xFFFF9ED2).withValues(alpha: 0.06 * envelope),
                                   Colors.transparent,
                                 ],
                               ),
@@ -2456,9 +2517,14 @@ class _CountdownPopupContentState extends State<_CountdownPopupContent> {
         children: [
           Text(
             _format(_remaining),
+            // FIX FONT: sama seperti kartu countdown utama — style ini dulu
+            // nggak set fontFamily & pakai fontWeight w300, jadi kemungkinan
+            // fallback ke font sistem. Sekarang disamakan dengan gaya di
+            // kartu countdown: fontFamily eksplisit + fontWeight w600.
             style: TextStyle(
+              fontFamily: 'MontserratAlternates',
               fontSize: 52,
-              fontWeight: FontWeight.w300,
+              fontWeight: FontWeight.w600,
               color: neutralAccent,
               letterSpacing: 2,
             ),
