@@ -1966,6 +1966,10 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
         // nggak berubah tiap frame) nggak ikut dibangun ulang tiap tick animasi.
         return Padding(
           padding: const EdgeInsets.symmetric(vertical: 4.0),
+          // Shadow dihapus lagi atas permintaan — border tipis aja udah cukup
+          // buat nandain kartu ini beda dari yang lain, nggak perlu efek
+          // "keangkat". Jadi balik ke ClipRRect langsung, nggak usah dibungkus
+          // Container tambahan buat shadow.
           child: ClipRRect(
             borderRadius: BorderRadius.circular(12),
             child: AnimatedBuilder(
@@ -1996,56 +2000,64 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
                 // jauh di kanan, jadi highlight-nya "menyapu" lewat seluruh kartu.
                 final shift = -2.2 + 4.4 * progress;
 
-                // Offset dikit buat 2 lapis fringe warna (cyan & magenta) di
-                // kiri-kanan sapuan utama -> efek dispersi cahaya ala kaca
-                // prisma (lihat referensi). Jaraknya sengaja kecil (0.05) &
-                // alpha-nya rendah banget supaya cuma kerasa "dikit" di tepi,
-                // bukan pelangi mencolok. Ini CUMA dipakai di mode gelap.
-                final cyanShift = shift - 0.05;
-                final magentaShift = shift + 0.05;
-
-                // FIX MODE TERANG: efek dispersi warna (cyan/gold/magenta) di
-                // atas tadinya didesain buat background GELAP. Begitu
-                // cardBg-nya putih, warna-warna itu (betapa pun disesuaikan
-                // alpha & huenya) tetap kelihatan kayak noda/smear, bukan
-                // kilau kaca — soalnya konsepnya "warna pelangi tipis" nggak
-                // natural buat permukaan putih polos. Jadi buat mode terang
-                // dipakai pendekatan BEDA sama sekali: "glossy sweep" —
-                // cuma pakai kontras terang/gelap netral (bukan warna-warni),
-                // mirip kilau di kaca/logam yang dipoles. Card dasarnya juga
-                // dikasih tint krem tipis (bukan putih polos) supaya sapuan
-                // terangnya punya "kanvas" buat kelihatan — putih di atas
-                // putih polos nggak akan pernah kelihatan.
-                const lightCardTint = Color(0xFFFBF8F2); // krem sangat tipis
-                final lightBorderColor = Colors.black.withValues(alpha: 0.08);
-
+                // FIX MODE TERANG: card highlight versi lama warnanya krem/gold
+                // (0xFBF8F2) yang bikin dia kelihatan "keemasan" & nggak
+                // nyambung sama tema app (yang monokrom hitam-putih-abu).
+                // Sekarang backgroundnya dicampur dari warna teks utama app
+                // (textColor, near-black) dengan opacity RENDAH BANGET (3.5%)
+                // -> hasilnya abu gelap super tipis yang netral, senada sama
+                // warna teks/border lain di app, BUKAN gold. Border-nya juga
+                // pakai textColor (bukan hitam polos / krem) biar satu keluarga
+                // warna sama teks & ikon lain di kartu.
+                //
+                // Prism sweep-nya juga dibersihin: ungu & pink DIHAPUS (kesan
+                // "gelap"/norak), diganti fringe HANGAT (gold-peach) yang
+                // cuma nongol pas sapuan lewat & opacity rendah -> masih ada
+                // sentuhan warna tapi nggak bikin kartu belang gold terus2an.
+                //
+                // FIX "nggak clean"/belang kotak-kotak: sebelumnya stop-nya
+                // kerapetan (0.32->0.66, cuma span 0.34) & warnanya solid
+                // (biru/mint/gold penuh), jadi tiap warna kelihatan sebagai
+                // BLOK terpisah yang keras pinggirannya (kayak di screenshot).
+                // Sekarang: (1) span-nya dilebarin jauh (0.15->0.85) biar
+                // transisi antar warna lebih landai/halus, (2) setiap warna
+                // di-lerp ke PUTIH dulu (bukan warna solid) jadi dia lebih
+                // ke arah "putih yang sedikit terwarnai" ketimbang "warna
+                // solid nempel di kartu" -> hasilnya nyampur mulus, nggak
+                // ada tepi tajam antar pita warna.
                 if (!isDark) {
+                  final tintedBg = Color.lerp(cardBg, textColor, 0.035)!;
+                  final tintedBorder = textColor.withValues(alpha: 0.14);
+
+                  final softBlue = Color.lerp(Colors.white, const Color(0xFF6FA8FF), 0.45)!;
+                  final softGold = Color.lerp(Colors.white, const Color(0xFFFFB84D), 0.45)!;
+
                   return Container(
                     decoration: BoxDecoration(
-                      color: lightCardTint,
+                      color: tintedBg,
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: lightBorderColor, width: 1.2),
+                      border: Border.all(color: tintedBorder, width: 1.2),
                     ),
                     child: Stack(
                       children: [
                         child!,
-                        // Glossy sweep: bayangan tipis -> garis terang putih -> bayangan
-                        // tipis lagi, nyapu diagonal bareng `shift`. Kontrasnya dari
-                        // terang/gelap netral, bukan dari warna, jadi kerasa natural
-                        // kayak refleksi cahaya di kaca/logam dipoles.
+                        // Prism sweep: transparan -> biru pudar -> HOTSPOT PUTIH
+                        // (paling terang, di tengah) -> gold pudar -> transparan.
+                        // Span lebar + warna di-lerp ke putih = transisi mulus,
+                        // nggak ada tepi warna yang keras/kelihatan "belang".
                         Positioned.fill(
                           child: IgnorePointer(
                             child: DecoratedBox(
                               decoration: BoxDecoration(
                                 gradient: LinearGradient(
-                                  begin: Alignment(-1 + shift, -1),
-                                  end: Alignment(1 + shift, 1),
-                                  stops: const [0.32, 0.46, 0.5, 0.54, 0.68],
+                                  begin: Alignment(-1.6 + shift * 2.4, -1),
+                                  end: Alignment(1.6 + shift * 2.4, 1),
+                                  stops: const [0.10, 0.35, 0.5, 0.65, 0.90],
                                   colors: [
                                     Colors.transparent,
-                                    Colors.black.withValues(alpha: 0.05 * envelope),
-                                    Colors.white.withValues(alpha: 0.85 * envelope),
-                                    Colors.black.withValues(alpha: 0.05 * envelope),
+                                    softBlue.withValues(alpha: 0.20 * envelope),
+                                    Colors.white.withValues(alpha: 0.60 * envelope),
+                                    softGold.withValues(alpha: 0.22 * envelope),
                                     Colors.transparent,
                                   ],
                                 ),
@@ -2057,6 +2069,14 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
                     ),
                   );
                 }
+
+                // Offset dikit buat 2 lapis fringe warna (cyan & magenta) di
+                // kiri-kanan sapuan utama -> efek dispersi cahaya ala kaca
+                // prisma (lihat referensi). Jaraknya sengaja kecil (0.05) &
+                // alpha-nya rendah banget supaya cuma kerasa "dikit" di tepi,
+                // bukan pelangi mencolok. Ini CUMA dipakai di mode gelap.
+                final cyanShift = shift - 0.05;
+                final magentaShift = shift + 0.05;
 
                 return Container(
                   decoration: BoxDecoration(
