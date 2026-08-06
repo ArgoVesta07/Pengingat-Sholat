@@ -2010,27 +2010,14 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
                 // pakai textColor (bukan hitam polos / krem) biar satu keluarga
                 // warna sama teks & ikon lain di kartu.
                 //
-                // Prism sweep-nya juga dibersihin: ungu & pink DIHAPUS (kesan
-                // "gelap"/norak), diganti fringe HANGAT (gold-peach) yang
-                // cuma nongol pas sapuan lewat & opacity rendah -> masih ada
-                // sentuhan warna tapi nggak bikin kartu belang gold terus2an.
-                //
-                // FIX "nggak clean"/belang kotak-kotak: sebelumnya stop-nya
-                // kerapetan (0.32->0.66, cuma span 0.34) & warnanya solid
-                // (biru/mint/gold penuh), jadi tiap warna kelihatan sebagai
-                // BLOK terpisah yang keras pinggirannya (kayak di screenshot).
-                // Sekarang: (1) span-nya dilebarin jauh (0.15->0.85) biar
-                // transisi antar warna lebih landai/halus, (2) setiap warna
-                // di-lerp ke PUTIH dulu (bukan warna solid) jadi dia lebih
-                // ke arah "putih yang sedikit terwarnai" ketimbang "warna
-                // solid nempel di kartu" -> hasilnya nyampur mulus, nggak
-                // ada tepi tajam antar pita warna.
+                // Prism sweep sekarang niru referensi (pelangi kelihatan jelas):
+                // biru -> mint -> HOTSPOT PUTIH -> pink -> ungu, opacity naik
+                // dikit dari percobaan sebelumnya (yang kelewat pudar). Stop
+                // tetap lebar (span luas per transisi) biar tetap mulus, nggak
+                // blocky/belang kayak versi paling awal.
                 if (!isDark) {
                   final tintedBg = Color.lerp(cardBg, textColor, 0.035)!;
                   final tintedBorder = textColor.withValues(alpha: 0.14);
-
-                  final softBlue = Color.lerp(Colors.white, const Color(0xFF6FA8FF), 0.45)!;
-                  final softGold = Color.lerp(Colors.white, const Color(0xFFFFB84D), 0.45)!;
 
                   return Container(
                     decoration: BoxDecoration(
@@ -2041,23 +2028,45 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
                     child: Stack(
                       children: [
                         child!,
-                        // Prism sweep: transparan -> biru pudar -> HOTSPOT PUTIH
-                        // (paling terang, di tengah) -> gold pudar -> transparan.
-                        // Span lebar + warna di-lerp ke putih = transisi mulus,
-                        // nggak ada tepi warna yang keras/kelihatan "belang".
+                        // Prism sweep: transparan -> biru -> mint -> HOTSPOT PUTIH
+                        // (paling terang, di tengah) -> pink -> ungu -> transparan.
+                        //
+                        // FIX #1 (lebih tipis): span dirapetin lagi dari 0.30
+                        // (0.35->0.65) jadi 0.24 (0.38->0.62) — pita kilaunya
+                        // sekarang lebih ramping.
+                        //
+                        // FIX #2 (kepotong tiba-tiba): sebelumnya di TIAP UJUNG
+                        // cuma ada 1 lompatan langsung dari transparan -> warna
+                        // alpha PENUH dalam jarak stop yang kecil, jadi keliatan
+                        // kayak ada garis/tepi tegas (potongan). Sekarang tiap
+                        // ujung dikasih 1 stop tambahan ber-alpha RENDAH dulu
+                        // (ramp-in/ramp-out pelan-pelan: transparan -> alpha kecil
+                        // -> alpha penuh, bukan langsung lompat ke alpha penuh),
+                        // jadi transisinya kerasa halus & nggak ada tepi tegas.
+                        //
+                        // FIX lanjutan: masih kelihatan garis, jadi ramp di TIAP
+                        // ujung ditambah 1 stop lagi (total 4 langkah per sisi:
+                        // transparan -> alpha 0.04 -> alpha 0.10 -> alpha 0.28)
+                        // biar makin landai/nggak ada tepi yang keliatan sama sekali.
                         Positioned.fill(
                           child: IgnorePointer(
                             child: DecoratedBox(
                               decoration: BoxDecoration(
                                 gradient: LinearGradient(
-                                  begin: Alignment(-1.6 + shift * 2.4, -1),
-                                  end: Alignment(1.6 + shift * 2.4, 1),
-                                  stops: const [0.10, 0.35, 0.5, 0.65, 0.90],
+                                  begin: Alignment(-1 + shift, -1),
+                                  end: Alignment(1 + shift, 1),
+                                  stops: const [0.38, 0.40, 0.42, 0.46, 0.49, 0.50, 0.51, 0.54, 0.58, 0.60, 0.62],
                                   colors: [
                                     Colors.transparent,
-                                    softBlue.withValues(alpha: 0.20 * envelope),
-                                    Colors.white.withValues(alpha: 0.60 * envelope),
-                                    softGold.withValues(alpha: 0.22 * envelope),
+                                    const Color(0xFF78AAFF).withValues(alpha: 0.04 * envelope), // ramp-in biru (super samar)
+                                    const Color(0xFF78AAFF).withValues(alpha: 0.10 * envelope), // ramp-in biru (samar)
+                                    const Color(0xFF78AAFF).withValues(alpha: 0.28 * envelope), // biru (penuh)
+                                    const Color(0xFF8CFFD2).withValues(alpha: 0.30 * envelope), // mint
+                                    Colors.white.withValues(alpha: 0.85 * envelope), // hotspot putih
+                                    const Color(0xFFFFBEE6).withValues(alpha: 0.30 * envelope), // pink
+                                    const Color(0xFFBE96FF).withValues(alpha: 0.28 * envelope), // ungu (penuh)
+                                    const Color(0xFFBE96FF).withValues(alpha: 0.10 * envelope), // ramp-out ungu (samar)
+                                    const Color(0xFFBE96FF).withValues(alpha: 0.04 * envelope), // ramp-out ungu (super samar)
                                     Colors.transparent,
                                   ],
                                 ),
