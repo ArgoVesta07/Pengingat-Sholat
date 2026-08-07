@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
+import 'dart:math' as math; // Diperlukan untuk animasi flip (rotateX)
 import 'dart:ui'; // Diperlukan untuk ImageFilter.blur
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -232,6 +233,161 @@ class _NextPrayerInfo {
   const _NextPrayerInfo({required this.remaining, required this.prayerKey, required this.isNextDay});
 }
 
+// Widget flip generik: dipakai buat animasi "kebalik" (rotateX) tiap kali
+// `child`-nya ganti (dideteksi lewat Key bawaan Flutter di dalam `child`).
+// Dipakai di 2 tempat: tiap digit countdown & baris tanggal (Masehi<->Hijriyah).
+class _FlipSwitcher extends StatelessWidget {
+  final Widget child;
+  final Duration duration;
+  const _FlipSwitcher({required this.child, this.duration = const Duration(milliseconds: 380)});
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedSwitcher(
+      duration: duration,
+      switchInCurve: Curves.easeOut,
+      switchOutCurve: Curves.easeIn,
+      transitionBuilder: (child, animation) {
+        final rotate = Tween(begin: math.pi / 2, end: 0.0).animate(animation);
+        return AnimatedBuilder(
+          animation: rotate,
+          child: child,
+          builder: (context, child) {
+            return Transform(
+              alignment: Alignment.center,
+              // setEntry(3,2,...) ngasih efek perspective, biar rotasinya
+              // kerasa "3D" (kayak kartu kebalik), bukan cuma di-squash flat.
+              transform: Matrix4.identity()
+                ..setEntry(3, 2, 0.0025)
+                ..rotateX(rotate.value),
+              child: child,
+            );
+          },
+        );
+      },
+      layoutBuilder: (currentChild, previousChildren) => Stack(
+        alignment: Alignment.center,
+        children: [...previousChildren, if (currentChild != null) currentChild],
+      ),
+      child: child,
+    );
+  }
+}
+
+// Susun 1 baris digit/karakter countdown, tiap karakter dibungkus _FlipSwitcher
+// sendiri-sendiri -> yang beneran "flip" cuma digit yang nilainya BERUBAH
+// (misal detik tiap 1 detik), digit lain yang belum berubah diam aja. Lebar
+// tiap karakter di-fix (SizedBox) biar nggak ada goyangan layout pas flip.
+Widget _buildFlipTimeRow(String text, TextStyle style) {
+  final fontSize = style.fontSize ?? 42;
+  final chars = text.split('');
+  return Row(
+    mainAxisSize: MainAxisSize.min,
+    children: List.generate(chars.length, (i) {
+      final c = chars[i];
+      final isColon = c == ':';
+      return SizedBox(
+        width: isColon ? fontSize * 0.32 : fontSize * 0.62,
+        child: _FlipSwitcher(
+          // Key gabungan posisi + nilai karakter -> AnimatedSwitcher cuma
+          // trigger flip kalau NILAI di posisi itu berubah, bukan asal beda
+          // karakter di posisi lain (bug sebelumnya pakai indexOf yang keliru
+          // ambil posisi kemunculan PERTAMA karakter itu di seluruh string).
+          child: Text(
+            c,
+            key: ValueKey('$i-$c'),
+            textAlign: TextAlign.center,
+            style: style,
+          ),
+        ),
+      );
+    }),
+  );
+}
+
+// --- Konversi & format tanggal Masehi <-> Hijriyah ---
+// Konversi pakai algoritma "Tabular Islamic Calendar" (basis Julian Day
+// Number) — nggak butuh package/dependency tambahan, cukup akurat buat
+// tampilan tanggal (bisa selisih ±1 hari dari rukyat/hisab resmi setempat).
+int _gregorianToJulianDay(int year, int month, int day) {
+  final a = ((14 - month) / 12).floor();
+  final y = year + 4800 - a;
+  final m = month + 12 * a - 3;
+  return day +
+      ((153 * m + 2) / 5).floor() +
+      365 * y +
+      (y / 4).floor() -
+      (y / 100).floor() +
+      (y / 400).floor() -
+      32045;
+}
+
+// Return [tahunHijriyah, bulanHijriyah(1-12), tanggalHijriyah]
+List<int> _gregorianToHijri(DateTime date) {
+  final jd = _gregorianToJulianDay(date.year, date.month, date.day);
+  var l = jd - 1948440 + 10632;
+  final n = ((l - 1) / 10631).floor();
+  l = l - 10631 * n + 354;
+  final j = ((10985 - l) / 5316).floor() * ((50 * l) / 17719).floor() +
+      (l / 5670).floor() * ((43 * l) / 15238).floor();
+  l = l -
+      ((30 - j) / 15).floor() * ((17719 * j) / 50).floor() -
+      (j / 16).floor() * ((15238 * j) / 43).floor() +
+      29;
+  final month = ((24 * l) / 709).floor();
+  final day = l - ((709 * month) / 24).floor();
+  final year = 30 * n + j - 30;
+  return [year, month, day];
+}
+
+// Nama bulan Hijriyah — dipakai apa adanya (transliterasi Latin) buat semua
+// bahasa, karena ini yang paling umum dikenali lintas bahasa di app sejenis.
+const List<String> _hijriMonthNames = [
+  'Muharram', 'Safar', 'Rabiul Awal', 'Rabiul Akhir',
+  'Jumadil Awal', 'Jumadil Akhir', 'Rajab', 'Syaban',
+  'Ramadhan', 'Syawal', 'Dzulkaidah', 'Dzulhijjah',
+];
+
+String _formatHijriDate(DateTime date) {
+  final h = _gregorianToHijri(date);
+  return '${h[2]} ${_hijriMonthNames[h[1] - 1]} ${h[0]} H';
+}
+
+// Nama hari & bulan Masehi per bahasa (bukan lewat intl.DateFormat locale,
+// karena app ini belum inisialisasi date-symbol-data buat locale non-en —
+// jadi dibikin tabel manual sendiri, konsisten sama pola _translations).
+String _formatGregorianDate(DateTime date, String lang) {
+  const idDays = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu'];
+  const idMonths = [
+    'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+    'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
+  ];
+  const enDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+  const enMonths = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December',
+  ];
+  const jaMonths = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
+  const jaDays = ['月曜日', '火曜日', '水曜日', '木曜日', '金曜日', '土曜日', '日曜日'];
+  const zhMonths = ['一月', '二月', '三月', '四月', '五月', '六月', '七月', '八月', '九月', '十月', '十一月', '十二月'];
+  const zhDays = ['星期一', '星期二', '星期三', '星期四', '星期五', '星期六', '星期日'];
+
+  final wd = date.weekday - 1; // Senin=0
+  final mo = date.month - 1;
+
+  switch (lang) {
+    case 'id':
+      return '${idDays[wd]}, ${date.day} ${idMonths[mo]} ${date.year}';
+    case 'ja':
+      return '${date.year}年${jaMonths[mo]}${date.day}日 ${jaDays[wd]}';
+    case 'zh':
+      return '${date.year}年${zhMonths[mo]}${date.day}日 ${zhDays[wd]}';
+    case 'en':
+    default:
+      return '${enDays[wd]}, ${enMonths[mo]} ${date.day}, ${date.year}';
+  }
+}
+
 class MyApp extends StatefulWidget {
   final SharedPreferences prefs;
   const MyApp({super.key, required this.prefs});
@@ -384,6 +540,9 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
   // string yang sama tiap detik, UI cuma rebuild pas prayer key-nya ganti.
   final ValueNotifier<String> _highlightedPrayerKeyNotifier = ValueNotifier('fajr');
   bool _isLoadingGps = false;
+  // Toggle tampilan tanggal: false = Masehi, true = Hijriyah. Nggak disimpan
+  // ke prefs (reset ke Masehi tiap buka app) — sengaja simpel dulu.
+  bool _showHijri = false;
   String _alarmMode = 'ring';
   String? _customAlarmPath;
   String? _customAlarmFileName;
@@ -582,10 +741,14 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
     return 'en';
   }
 
-  String _t(String key) {
+  String _currentLangCode() {
     final locale = View.of(context).platformDispatcher.locale;
     final rawLang = widget.currentLanguageCode ?? locale.toLanguageTag();
-    final lang = _resolveLanguageCode(rawLang);
+    return _resolveLanguageCode(rawLang);
+  }
+
+  String _t(String key) {
+    final lang = _currentLangCode();
     return _translations[lang]?[key] ?? key;
   }
 
@@ -1616,6 +1779,30 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
                                   style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: primaryTextColor),
                                   overflow: TextOverflow.ellipsis,
                                 ),
+                                const SizedBox(height: 3),
+                                // Baris tanggal: tap buat toggle Masehi <-> Hijriyah.
+                                // Dibungkus _FlipSwitcher, jadi teksnya "flip" tiap
+                                // ganti mode, sama efeknya kayak digit countdown.
+                                GestureDetector(
+                                  behavior: HitTestBehavior.opaque,
+                                  onTap: () {
+                                    HapticFeedback.selectionClick();
+                                    setState(() => _showHijri = !_showHijri);
+                                  },
+                                  child: _FlipSwitcher(
+                                    child: Text(
+                                      _showHijri
+                                          ? _formatHijriDate(DateTime.now())
+                                          : _formatGregorianDate(DateTime.now(), _currentLangCode()),
+                                      key: ValueKey(_showHijri),
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: primaryTextColor.withAlpha((0.55 * 255).round()),
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ),
                               ],
                             ),
                           ),
@@ -1658,8 +1845,18 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
                     width: double.infinity,
                     padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 20),
                     decoration: BoxDecoration(
-                      color: isDark ? const Color(0xFF252525) : const Color(0xFF1C1C1E),
+                      // FIX color harmony: sebelumnya di mode terang card ini
+                      // SELALU hitam pekat (0xFF1C1C1E) di tengah tema yang
+                      // full putih/abu — jadi nongol sendiri, nggak nyatu.
+                      // Sekarang di mode terang dia ikut keluarga warna card
+                      // lain (putih, cardBgColor) + border tipis buat tetap
+                      // kelihatan sebagai elemen tersendiri, TANPA perlu invert
+                      // jadi kotak hitam. Mode gelap nggak diubah.
+                      color: isDark ? const Color(0xFF252525) : cardBgColor,
                       borderRadius: BorderRadius.circular(20),
+                      border: isDark
+                          ? null
+                          : Border.all(color: Colors.black12, width: 1),
                     ),
                     child: ValueListenableBuilder<_NextPrayerInfo>(
                       valueListenable: _nextPrayerNotifier,
@@ -1671,27 +1868,32 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
                           children: [
                             Text(
                               '${_t("towards")} ${nextName.toUpperCase()}',
-                              style: const TextStyle(
-                                color: Colors.white54,
+                              style: TextStyle(
+                                // Label & angka countdown sekarang ikut warna teks
+                                // utama app (primaryTextColor) di mode terang,
+                                // bukan putih hardcoded — karena backgroundnya
+                                // udah nggak hitam lagi.
+                                color: isDark ? Colors.white54 : primaryTextColor.withValues(alpha: 0.5),
                                 fontSize: 11,
                                 fontWeight: FontWeight.w600,
                                 letterSpacing: 1.5,
                               ),
                             ),
                             const SizedBox(height: 8),
-                            Text(
+                            // FIX FONT (lihat catatan lama): fontFamily di-set
+                            // eksplisit + fontWeight w600 biar konsisten sama
+                            // font app, nggak fallback ke font sistem.
+                            //
+                            // UPDATE animasi: sekarang tiap digit dibungkus
+                            // _buildFlipTimeRow -> pas detik/menit/jam berubah,
+                            // cuma digit yang beneran berubah nilainya yang
+                            // "flip" (rotateX), digit lain diam. Efeknya kayak
+                            // jam alarm analog jadul.
+                            _buildFlipTimeRow(
                               _formatDuration(info.remaining),
-                              // FIX FONT: sebelumnya style ini nggak menyebut fontFamily,
-                              // dan fontWeight w300 kemungkinan nggak tersedia di font
-                              // 'MontserratAlternates' (kalau varian weight itu nggak
-                              // di-bundle di pubspec), jadi Flutter fallback ke font
-                              // sistem/default -> angka countdown-nya kelihatan beda
-                              // font dibanding teks lain di app. Sekarang fontFamily
-                              // di-set eksplisit & fontWeight dipakai w600 (bold-ish,
-                              // aman karena weight ini yang biasanya selalu ke-load).
-                              style: const TextStyle(
+                              TextStyle(
                                 fontFamily: 'MontserratAlternates',
-                                color: Colors.white,
+                                color: isDark ? Colors.white : primaryTextColor,
                                 fontSize: 42,
                                 fontWeight: FontWeight.w600,
                                 letterSpacing: 2,
@@ -2003,12 +2205,13 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
                 // FIX MODE TERANG: card highlight versi lama warnanya krem/gold
                 // (0xFBF8F2) yang bikin dia kelihatan "keemasan" & nggak
                 // nyambung sama tema app (yang monokrom hitam-putih-abu).
-                // Sekarang backgroundnya dicampur dari warna teks utama app
-                // (textColor, near-black) dengan opacity RENDAH BANGET (3.5%)
-                // -> hasilnya abu gelap super tipis yang netral, senada sama
-                // warna teks/border lain di app, BUKAN gold. Border-nya juga
-                // pakai textColor (bukan hitam polos / krem) biar satu keluarga
-                // warna sama teks & ikon lain di kartu.
+                //
+                // UPDATE color harmony: sekarang backgroundnya di-blend ke arah
+                // GOLD HANGAT (bukan ke textColor/hitam lagi) dengan opacity
+                // rendah (4%) — biar card ini kerasa "satu keluarga warna" sama
+                // prism sweep-nya (yang emang ada sisi gold/pink), bukan cuma
+                // card netral yang kebetulan ditumpangin kilau warna-warni.
+                // Border-nya juga ikut dihangatkan senada.
                 //
                 // Prism sweep sekarang niru referensi (pelangi kelihatan jelas):
                 // biru -> mint -> HOTSPOT PUTIH -> pink -> ungu, opacity naik
@@ -2544,13 +2747,13 @@ class _CountdownPopupContentState extends State<_CountdownPopupContent> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
+          // FIX FONT: sama seperti kartu countdown utama — fontFamily
+          // eksplisit + fontWeight w600, biar konsisten.
+          // UPDATE animasi: pakai flip row yang sama kayak card utama, biar
+          // konsisten (dulu popup ini polos, sekarang ikut flip juga).
+          _buildFlipTimeRow(
             _format(_remaining),
-            // FIX FONT: sama seperti kartu countdown utama — style ini dulu
-            // nggak set fontFamily & pakai fontWeight w300, jadi kemungkinan
-            // fallback ke font sistem. Sekarang disamakan dengan gaya di
-            // kartu countdown: fontFamily eksplisit + fontWeight w600.
-            style: TextStyle(
+            TextStyle(
               fontFamily: 'MontserratAlternates',
               fontSize: 52,
               fontWeight: FontWeight.w600,
