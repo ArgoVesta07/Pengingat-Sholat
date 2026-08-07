@@ -235,7 +235,7 @@ class _NextPrayerInfo {
 
 // Widget flip generik: dipakai buat animasi "kebalik" (rotateX) tiap kali
 // `child`-nya ganti (dideteksi lewat Key bawaan Flutter di dalam `child`).
-// Dipakai di 2 tempat: tiap digit countdown & baris tanggal (Masehi<->Hijriyah).
+// Dipakai khusus buat kartu digit countdown (lihat _buildFlipDigitCard).
 class _FlipSwitcher extends StatelessWidget {
   final Widget child;
   final Duration duration;
@@ -274,30 +274,200 @@ class _FlipSwitcher extends StatelessWidget {
   }
 }
 
+// Widget switcher khusus buat TEKS (bukan kartu digit) — dipakai buat baris
+// tanggal Masehi<->Hijriyah. Sebelumnya baris tanggal ini pakai _FlipSwitcher
+// yang sama dengan kartu digit (rotateX 90 derajat), tapi buat 1 baris teks
+// panjang efeknya kerasa "patah"/nggak flow: teksnya lompat mendadak begitu
+// animasi lewat setengah jalan, karena rotateX pada teks lebar itu nggak
+// simetris kayak pada kotak digit kecil.
+//
+// Fix: dipisah jadi switcher sendiri yang pakai fade + slide vertikal tipis
+// (kayak transisi jam digital / odometer teks) — teks lama fade-out sambil
+// geser turun dikit, teks baru fade-in sambil geser naik dari bawah. Efeknya
+// jauh lebih halus & "mengalir" buat baris teks, sementara kartu digit
+// countdown tetap pakai _FlipSwitcher yang lama (nggak diubah, karena
+// efek flip-nya emang pas buat kartu kecil).
+class _SmoothTextSwitcher extends StatelessWidget {
+  final Widget child;
+  final Duration duration;
+  const _SmoothTextSwitcher({required this.child, this.duration = const Duration(milliseconds: 420)});
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedSwitcher(
+      duration: duration,
+      switchInCurve: Curves.easeOutCubic,
+      switchOutCurve: Curves.easeInCubic,
+      transitionBuilder: (child, animation) {
+        final slideIn = Tween<Offset>(
+          begin: const Offset(0, 0.35),
+          end: Offset.zero,
+        ).animate(animation);
+        return ClipRect(
+          child: FadeTransition(
+            opacity: animation,
+            child: SlideTransition(position: slideIn, child: child),
+          ),
+        );
+      },
+      layoutBuilder: (currentChild, previousChildren) => Stack(
+        alignment: Alignment.center,
+        children: [...previousChildren, if (currentChild != null) currentChild],
+      ),
+      child: child,
+    );
+  }
+}
+
+// Bikin 1 "kartu" digit -> background + border + shadow tipis + garis seam di
+// tengah (khas kartu split-flap/flip clock beneran). Dipakai per-digit di
+// _buildFlipTimeRow, supaya yang keliatan "flip" itu SELURUH kartunya (bukan
+// cuma teks polos ngambang doang kayak sebelumnya).
+//
+// FIX PENGATURAN VERTIKAL DIGIT: sebelumnya digit kelihatan "turun" dikit dari
+// titik tengah kartu (nggak pas ketemu garis seam di tengah), padahal sudah
+// dibungkus Stack(alignment: Alignment.center). Ini bukan soal alignment,
+// tapi soal font metrics -> font custom (MontserratAlternates) punya ruang
+// ascent/descent bawaan yang nggak simetris terhadap baseline, jadi Flutter
+// nyisain sedikit ruang ekstra di atas/bawah glyph sesuai metrik font, bukan
+// sesuai bounding box digit itu sendiri. Efeknya digit kelihatan nggak
+// benar-benar center walau container-nya sudah center.
+//
+// Fix: bungkus Text dalam Center eksplisit + kasih `strutStyle` dengan
+// `forceStrutHeight: true`. Strut memaksa tinggi baris teks mengikuti
+// fontSize secara ketat (height: 1.0), jadi ruang ekstra dari font metrics
+// dibuang dan glyph digit jadi betul-betul center secara vertikal terhadap
+// kartu & garis seam.
+Widget _buildFlipDigitCard(
+  String char,
+  TextStyle style, {
+  Key? key,
+  required Color cardColor,
+  required Color borderColor,
+  required Color seamColor,
+  required double width,
+  required double height,
+}) {
+  // Versi simpel: flat, tanpa shadow, border tipis banget — cuma seam tengah
+  // yang nunjukin ini "kartu 2 bagian" ala flip clock, sisanya polos.
+  return Container(
+    key: key,
+    width: width,
+    height: height,
+    alignment: Alignment.center,
+    decoration: BoxDecoration(
+      color: cardColor,
+      borderRadius: BorderRadius.circular(6),
+      border: Border.all(color: borderColor, width: 1),
+    ),
+    child: Stack(
+      alignment: Alignment.center,
+      children: [
+        Center(
+          child: Text(
+            char,
+            textAlign: TextAlign.center,
+            style: style,
+            strutStyle: StrutStyle(
+              fontSize: style.fontSize,
+              fontFamily: style.fontFamily,
+              height: 1.0,
+              forceStrutHeight: true,
+            ),
+          ),
+        ),
+        // Garis seam horizontal di tengah kartu -> ini yang bikin dia keliatan
+        // "kartu fisik kebelah 2" kayak flip clock jadul, bukan cuma teks.
+        Positioned(
+          left: 0,
+          right: 0,
+          top: height / 2 - 0.5,
+          child: Container(height: 1, color: seamColor),
+        ),
+      ],
+    ),
+  );
+}
+
 // Susun 1 baris digit/karakter countdown, tiap karakter dibungkus _FlipSwitcher
 // sendiri-sendiri -> yang beneran "flip" cuma digit yang nilainya BERUBAH
 // (misal detik tiap 1 detik), digit lain yang belum berubah diam aja. Lebar
 // tiap karakter di-fix (SizedBox) biar nggak ada goyangan layout pas flip.
-Widget _buildFlipTimeRow(String text, TextStyle style) {
+//
+// UPDATE: sekarang tiap digit (bukan ":") dibungkus _buildFlipDigitCard, jadi
+// yang di-rotateX itu SELURUH kartunya (background+border+seam ikut kebalik),
+// bukan cuma teks polos ngambang. Colon tetap teks biasa tanpa kartu, sama
+// kayak tampilan flip-clock beneran.
+//
+// UPDATE margin: jarak antar kartu digit sebelumnya kerapetan (padding
+// horizontal cuma 0.045x fontSize per sisi). Sekarang di-lebarin jadi 0.09x
+// fontSize per sisi (2x lipat) biar kartu-kartunya nggak nempel-nempel, dan
+// colon juga dikasih padding kiri-kanan tipis (0.05x) biar spacing-nya
+// konsisten & seimbang di kedua sisi, bukan cuma digitnya doang yang dikasih
+// jarak.
+Widget _buildFlipTimeRow(
+  String text,
+  TextStyle style, {
+  Color? cardColor,
+  Color? cardBorderColor,
+  Color? seamColor,
+}) {
   final fontSize = style.fontSize ?? 42;
   final chars = text.split('');
+  final resolvedCardColor = cardColor ?? Colors.black.withValues(alpha: 0.25);
+  final resolvedBorderColor = cardBorderColor ?? Colors.white24;
+  final resolvedSeamColor = seamColor ?? Colors.black.withValues(alpha: 0.35);
+  final digitWidth = fontSize * 0.68;
+  final digitHeight = fontSize * 1.22;
+
   return Row(
     mainAxisSize: MainAxisSize.min,
     children: List.generate(chars.length, (i) {
       final c = chars[i];
       final isColon = c == ':';
-      return SizedBox(
-        width: isColon ? fontSize * 0.32 : fontSize * 0.62,
-        child: _FlipSwitcher(
-          // Key gabungan posisi + nilai karakter -> AnimatedSwitcher cuma
-          // trigger flip kalau NILAI di posisi itu berubah, bukan asal beda
-          // karakter di posisi lain (bug sebelumnya pakai indexOf yang keliru
-          // ambil posisi kemunculan PERTAMA karakter itu di seluruh string).
-          child: Text(
-            c,
-            key: ValueKey('$i-$c'),
-            textAlign: TextAlign.center,
-            style: style,
+
+      if (isColon) {
+        return Padding(
+          padding: EdgeInsets.symmetric(horizontal: fontSize * 0.05),
+          child: SizedBox(
+            width: fontSize * 0.32,
+            child: Center(
+              child: Text(
+                c,
+                textAlign: TextAlign.center,
+                style: style,
+                strutStyle: StrutStyle(
+                  fontSize: style.fontSize,
+                  fontFamily: style.fontFamily,
+                  height: 1.0,
+                  forceStrutHeight: true,
+                ),
+              ),
+            ),
+          ),
+        );
+      }
+
+      return Padding(
+        padding: EdgeInsets.symmetric(horizontal: fontSize * 0.09),
+        child: SizedBox(
+          width: digitWidth,
+          height: digitHeight,
+          child: _FlipSwitcher(
+            // Key gabungan posisi + nilai karakter -> AnimatedSwitcher cuma
+            // trigger flip kalau NILAI di posisi itu berubah, bukan asal beda
+            // karakter di posisi lain (bug sebelumnya pakai indexOf yang keliru
+            // ambil posisi kemunculan PERTAMA karakter itu di seluruh string).
+            child: _buildFlipDigitCard(
+              c,
+              style,
+              cardColor: resolvedCardColor,
+              borderColor: resolvedBorderColor,
+              seamColor: resolvedSeamColor,
+              width: digitWidth,
+              height: digitHeight,
+              key: ValueKey('$i-$c'),
+            ),
           ),
         ),
       );
@@ -1779,30 +1949,6 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
                                   style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: primaryTextColor),
                                   overflow: TextOverflow.ellipsis,
                                 ),
-                                const SizedBox(height: 3),
-                                // Baris tanggal: tap buat toggle Masehi <-> Hijriyah.
-                                // Dibungkus _FlipSwitcher, jadi teksnya "flip" tiap
-                                // ganti mode, sama efeknya kayak digit countdown.
-                                GestureDetector(
-                                  behavior: HitTestBehavior.opaque,
-                                  onTap: () {
-                                    HapticFeedback.selectionClick();
-                                    setState(() => _showHijri = !_showHijri);
-                                  },
-                                  child: _FlipSwitcher(
-                                    child: Text(
-                                      _showHijri
-                                          ? _formatHijriDate(DateTime.now())
-                                          : _formatGregorianDate(DateTime.now(), _currentLangCode()),
-                                      key: ValueKey(_showHijri),
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        color: primaryTextColor.withAlpha((0.55 * 255).round()),
-                                      ),
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                ),
                               ],
                             ),
                           ),
@@ -1866,29 +2012,47 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
                             : _t(info.prayerKey);
                         return Column(
                           children: [
-                            Text(
-                              '${_t("towards")} ${nextName.toUpperCase()}',
-                              style: TextStyle(
-                                // Label & angka countdown sekarang ikut warna teks
-                                // utama app (primaryTextColor) di mode terang,
-                                // bukan putih hardcoded — karena backgroundnya
-                                // udah nggak hitam lagi.
-                                color: isDark ? Colors.white54 : primaryTextColor.withValues(alpha: 0.5),
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                                letterSpacing: 1.5,
+                            // Baris tanggal — dulu di bar lokasi, sekarang dipindah
+                            // ke sini (posisi yang dulu ditempatin label "NEXT
+                            // PRAYER"). Tap buat toggle Masehi <-> Hijriyah.
+                            // UPDATE: sekarang pakai _SmoothTextSwitcher (fade +
+                            // slide vertikal tipis), bukan _FlipSwitcher lagi —
+                            // pergantian teksnya kerasa lebih flow/halus,
+                            // sebelumnya rotateX 90 derajat pada 1 baris teks
+                            // panjang kerasa patah-patah.
+                            GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onTap: () {
+                                HapticFeedback.selectionClick();
+                                setState(() => _showHijri = !_showHijri);
+                              },
+                              child: _SmoothTextSwitcher(
+                                child: Text(
+                                  _showHijri
+                                      ? _formatHijriDate(DateTime.now())
+                                      : _formatGregorianDate(DateTime.now(), _currentLangCode()),
+                                  key: ValueKey(_showHijri),
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    color: isDark ? Colors.white54 : primaryTextColor.withValues(alpha: 0.5),
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    letterSpacing: 1.0,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                               ),
                             ),
-                            const SizedBox(height: 8),
+                            const SizedBox(height: 10),
                             // FIX FONT (lihat catatan lama): fontFamily di-set
                             // eksplisit + fontWeight w600 biar konsisten sama
                             // font app, nggak fallback ke font sistem.
                             //
                             // UPDATE animasi: sekarang tiap digit dibungkus
-                            // _buildFlipTimeRow -> pas detik/menit/jam berubah,
-                            // cuma digit yang beneran berubah nilainya yang
-                            // "flip" (rotateX), digit lain diam. Efeknya kayak
-                            // jam alarm analog jadul.
+                            // dalam kartu (_buildFlipDigitCard) sebelum di-flip,
+                            // jadi kelihatan kayak kartu fisik yang kebalik
+                            // (ada background tipis + seam tengah), bukan cuma
+                            // teks yang muter. Warna kartu ikut nyesuain dark/light.
                             _buildFlipTimeRow(
                               _formatDuration(info.remaining),
                               TextStyle(
@@ -1896,7 +2060,22 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
                                 color: isDark ? Colors.white : primaryTextColor,
                                 fontSize: 42,
                                 fontWeight: FontWeight.w600,
-                                letterSpacing: 2,
+                                letterSpacing: 0,
+                              ),
+                              cardColor: isDark ? const Color(0xFF303032) : const Color(0xFFF5F5F7),
+                              cardBorderColor: isDark ? Colors.white12 : Colors.black12,
+                              seamColor: isDark ? Colors.black38 : Colors.black.withValues(alpha: 0.08),
+                            ),
+                            const SizedBox(height: 10),
+                            // Label "NEXT PRAYER X" — dulu di atas, sekarang
+                            // dipindah ke bawah digit countdown.
+                            Text(
+                              '${_t("towards")} ${nextName.toUpperCase()}',
+                              style: TextStyle(
+                                color: isDark ? Colors.white54 : primaryTextColor.withValues(alpha: 0.5),
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: 1.5,
                               ),
                             ),
                           ],
@@ -2213,11 +2392,17 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
                 // card netral yang kebetulan ditumpangin kilau warna-warni.
                 // Border-nya juga ikut dihangatkan senada.
                 //
-                // Prism sweep sekarang niru referensi (pelangi kelihatan jelas):
-                // biru -> mint -> HOTSPOT PUTIH -> pink -> ungu, opacity naik
-                // dikit dari percobaan sebelumnya (yang kelewat pudar). Stop
-                // tetap lebar (span luas per transisi) biar tetap mulus, nggak
-                // blocky/belang kayak versi paling awal.
+                // UPDATE (fix mode terang, v3 — PRISMA REDUP, dipilih user):
+                // Percobaan pertama (mono gelap tipis) aman tapi kerasa datar.
+                // Sekarang balik ke konsep PRISMA kayak semula (cyan -> putih
+                // -> pink, efek dispersi kaca), TAPI opacity-nya jauh
+                // diturunin dibanding versi paling awal yang kelewat
+                // mencolok: puncak putih dari 0.55 -> 0.35, fringe cyan/pink
+                // dari 0.06 -> 0.10 (sedikit dinaikkan drpd versi awal krn di
+                // atas background terang warnanya lebih gampang "hilang").
+                // Rentang stop juga dilebarin (26%-70% vs sebelumnya
+                // 38%-62%) biar transisinya lebih landai/halus, nggak
+                // berasa nge-blok.
                 if (!isDark) {
                   final tintedBg = Color.lerp(cardBg, textColor, 0.035)!;
                   final tintedBorder = textColor.withValues(alpha: 0.14);
@@ -2231,26 +2416,6 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
                     child: Stack(
                       children: [
                         child!,
-                        // Prism sweep: transparan -> biru -> mint -> HOTSPOT PUTIH
-                        // (paling terang, di tengah) -> pink -> ungu -> transparan.
-                        //
-                        // FIX #1 (lebih tipis): span dirapetin lagi dari 0.30
-                        // (0.35->0.65) jadi 0.24 (0.38->0.62) — pita kilaunya
-                        // sekarang lebih ramping.
-                        //
-                        // FIX #2 (kepotong tiba-tiba): sebelumnya di TIAP UJUNG
-                        // cuma ada 1 lompatan langsung dari transparan -> warna
-                        // alpha PENUH dalam jarak stop yang kecil, jadi keliatan
-                        // kayak ada garis/tepi tegas (potongan). Sekarang tiap
-                        // ujung dikasih 1 stop tambahan ber-alpha RENDAH dulu
-                        // (ramp-in/ramp-out pelan-pelan: transparan -> alpha kecil
-                        // -> alpha penuh, bukan langsung lompat ke alpha penuh),
-                        // jadi transisinya kerasa halus & nggak ada tepi tegas.
-                        //
-                        // FIX lanjutan: masih kelihatan garis, jadi ramp di TIAP
-                        // ujung ditambah 1 stop lagi (total 4 langkah per sisi:
-                        // transparan -> alpha 0.04 -> alpha 0.10 -> alpha 0.28)
-                        // biar makin landai/nggak ada tepi yang keliatan sama sekali.
                         Positioned.fill(
                           child: IgnorePointer(
                             child: DecoratedBox(
@@ -2258,18 +2423,12 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
                                 gradient: LinearGradient(
                                   begin: Alignment(-1 + shift, -1),
                                   end: Alignment(1 + shift, 1),
-                                  stops: const [0.38, 0.40, 0.42, 0.46, 0.49, 0.50, 0.51, 0.54, 0.58, 0.60, 0.62],
+                                  stops: const [0.26, 0.38, 0.48, 0.58, 0.70],
                                   colors: [
                                     Colors.transparent,
-                                    const Color(0xFF78AAFF).withValues(alpha: 0.04 * envelope), // ramp-in biru (super samar)
-                                    const Color(0xFF78AAFF).withValues(alpha: 0.10 * envelope), // ramp-in biru (samar)
-                                    const Color(0xFF78AAFF).withValues(alpha: 0.28 * envelope), // biru (penuh)
-                                    const Color(0xFF8CFFD2).withValues(alpha: 0.30 * envelope), // mint
-                                    Colors.white.withValues(alpha: 0.85 * envelope), // hotspot putih
-                                    const Color(0xFFFFBEE6).withValues(alpha: 0.30 * envelope), // pink
-                                    const Color(0xFFBE96FF).withValues(alpha: 0.28 * envelope), // ungu (penuh)
-                                    const Color(0xFFBE96FF).withValues(alpha: 0.10 * envelope), // ramp-out ungu (samar)
-                                    const Color(0xFFBE96FF).withValues(alpha: 0.04 * envelope), // ramp-out ungu (super samar)
+                                    const Color(0xFF8FE9FF).withValues(alpha: 0.10 * envelope), // fringe cyan
+                                    Colors.white.withValues(alpha: 0.35 * envelope), // hotspot putih (puncak, diredupkan)
+                                    const Color(0xFFFF9ED2).withValues(alpha: 0.10 * envelope), // fringe pink
                                     Colors.transparent,
                                   ],
                                 ),
@@ -2749,8 +2908,8 @@ class _CountdownPopupContentState extends State<_CountdownPopupContent> {
         children: [
           // FIX FONT: sama seperti kartu countdown utama — fontFamily
           // eksplisit + fontWeight w600, biar konsisten.
-          // UPDATE animasi: pakai flip row yang sama kayak card utama, biar
-          // konsisten (dulu popup ini polos, sekarang ikut flip juga).
+          // UPDATE animasi: pakai flip card yang sama kayak card utama, biar
+          // konsisten (dulu popup ini polos, sekarang ikut flip card juga).
           _buildFlipTimeRow(
             _format(_remaining),
             TextStyle(
@@ -2758,8 +2917,11 @@ class _CountdownPopupContentState extends State<_CountdownPopupContent> {
               fontSize: 52,
               fontWeight: FontWeight.w600,
               color: neutralAccent,
-              letterSpacing: 2,
+              letterSpacing: 0,
             ),
+            cardColor: widget.isDark ? const Color(0xFF3A3A3C) : const Color(0xFFF5F5F7),
+            cardBorderColor: widget.isDark ? Colors.white24 : Colors.black12,
+            seamColor: widget.isDark ? Colors.black45 : Colors.black.withValues(alpha: 0.12),
           ),
           const SizedBox(height: 12),
           Text(
