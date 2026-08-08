@@ -224,8 +224,6 @@ final Map<String, Map<String, String>> _translations = {
   },
 };
 
-// Data next-prayer yang di-tick tiap detik lewat ValueNotifier (lihat penjelasan
-// di field _nextPrayerNotifier pada _JadwalSholatScreenState).
 class _NextPrayerInfo {
   final Duration remaining;
   final String prayerKey;
@@ -233,9 +231,6 @@ class _NextPrayerInfo {
   const _NextPrayerInfo({required this.remaining, required this.prayerKey, required this.isNextDay});
 }
 
-// Widget flip generik: dipakai buat animasi "kebalik" (rotateX) tiap kali
-// `child`-nya ganti (dideteksi lewat Key bawaan Flutter di dalam `child`).
-// Dipakai khusus buat kartu digit countdown (lihat _buildFlipDigitCard).
 class _FlipSwitcher extends StatelessWidget {
   final Widget child;
   final Duration duration;
@@ -255,8 +250,6 @@ class _FlipSwitcher extends StatelessWidget {
           builder: (context, child) {
             return Transform(
               alignment: Alignment.center,
-              // setEntry(3,2,...) ngasih efek perspective, biar rotasinya
-              // kerasa "3D" (kayak kartu kebalik), bukan cuma di-squash flat.
               transform: Matrix4.identity()
                 ..setEntry(3, 2, 0.0025)
                 ..rotateX(rotate.value),
@@ -274,19 +267,6 @@ class _FlipSwitcher extends StatelessWidget {
   }
 }
 
-// Widget switcher khusus buat TEKS (bukan kartu digit) — dipakai buat baris
-// tanggal Masehi<->Hijriyah. Sebelumnya baris tanggal ini pakai _FlipSwitcher
-// yang sama dengan kartu digit (rotateX 90 derajat), tapi buat 1 baris teks
-// panjang efeknya kerasa "patah"/nggak flow: teksnya lompat mendadak begitu
-// animasi lewat setengah jalan, karena rotateX pada teks lebar itu nggak
-// simetris kayak pada kotak digit kecil.
-//
-// Fix: dipisah jadi switcher sendiri yang pakai fade + slide vertikal tipis
-// (kayak transisi jam digital / odometer teks) — teks lama fade-out sambil
-// geser turun dikit, teks baru fade-in sambil geser naik dari bawah. Efeknya
-// jauh lebih halus & "mengalir" buat baris teks, sementara kartu digit
-// countdown tetap pakai _FlipSwitcher yang lama (nggak diubah, karena
-// efek flip-nya emang pas buat kartu kecil).
 class _SmoothTextSwitcher extends StatelessWidget {
   final Widget child;
   final Duration duration;
@@ -319,25 +299,6 @@ class _SmoothTextSwitcher extends StatelessWidget {
   }
 }
 
-// Bikin 1 "kartu" digit -> background + border + shadow tipis + garis seam di
-// tengah (khas kartu split-flap/flip clock beneran). Dipakai per-digit di
-// _buildFlipTimeRow, supaya yang keliatan "flip" itu SELURUH kartunya (bukan
-// cuma teks polos ngambang doang kayak sebelumnya).
-//
-// FIX PENGATURAN VERTIKAL DIGIT: sebelumnya digit kelihatan "turun" dikit dari
-// titik tengah kartu (nggak pas ketemu garis seam di tengah), padahal sudah
-// dibungkus Stack(alignment: Alignment.center). Ini bukan soal alignment,
-// tapi soal font metrics -> font custom (MontserratAlternates) punya ruang
-// ascent/descent bawaan yang nggak simetris terhadap baseline, jadi Flutter
-// nyisain sedikit ruang ekstra di atas/bawah glyph sesuai metrik font, bukan
-// sesuai bounding box digit itu sendiri. Efeknya digit kelihatan nggak
-// benar-benar center walau container-nya sudah center.
-//
-// Fix: bungkus Text dalam Center eksplisit + kasih `strutStyle` dengan
-// `forceStrutHeight: true`. Strut memaksa tinggi baris teks mengikuti
-// fontSize secara ketat (height: 1.0), jadi ruang ekstra dari font metrics
-// dibuang dan glyph digit jadi betul-betul center secara vertikal terhadap
-// kartu & garis seam.
 Widget _buildFlipDigitCard(
   String char,
   TextStyle style, {
@@ -348,8 +309,6 @@ Widget _buildFlipDigitCard(
   required double width,
   required double height,
 }) {
-  // Versi simpel: flat, tanpa shadow, border tipis banget — cuma seam tengah
-  // yang nunjukin ini "kartu 2 bagian" ala flip clock, sisanya polos.
   return Container(
     key: key,
     width: width,
@@ -368,6 +327,7 @@ Widget _buildFlipDigitCard(
             char,
             textAlign: TextAlign.center,
             style: style,
+            textScaler: TextScaler.noScaling,
             strutStyle: StrutStyle(
               fontSize: style.fontSize,
               fontFamily: style.fontFamily,
@@ -376,8 +336,6 @@ Widget _buildFlipDigitCard(
             ),
           ),
         ),
-        // Garis seam horizontal di tengah kartu -> ini yang bikin dia keliatan
-        // "kartu fisik kebelah 2" kayak flip clock jadul, bukan cuma teks.
         Positioned(
           left: 0,
           right: 0,
@@ -389,22 +347,21 @@ Widget _buildFlipDigitCard(
   );
 }
 
-// Susun 1 baris digit/karakter countdown, tiap karakter dibungkus _FlipSwitcher
-// sendiri-sendiri -> yang beneran "flip" cuma digit yang nilainya BERUBAH
-// (misal detik tiap 1 detik), digit lain yang belum berubah diam aja. Lebar
-// tiap karakter di-fix (SizedBox) biar nggak ada goyangan layout pas flip.
+// FIX OVERFLOW: dulu fungsi ini membaca ambient textScaler (termasuk _uiScale)
+// buat ngitung fontSize efektif, terus lebar tiap kartu digit dihitung dari situ.
+// Masalahnya: Row hasil dari fungsi ini dipasang di dalam Column berlebar TETAP
+// (SizedBox(width: 420) dikurangi padding di JadwalSholatScreen). Begitu UI Size
+// dinaikin, total lebar 8 karakter (mis. "00:00:00") ikut membesar sementara
+// kontainer nggak ikut lebar -> RenderFlex overflow (garis kuning-hitam +
+// "RIGHT OVERFLOWED BY N PIXELS").
 //
-// UPDATE: sekarang tiap digit (bukan ":") dibungkus _buildFlipDigitCard, jadi
-// yang di-rotateX itu SELURUH kartunya (background+border+seam ikut kebalik),
-// bukan cuma teks polos ngambang. Colon tetap teks biasa tanpa kartu, sama
-// kayak tampilan flip-clock beneran.
-//
-// UPDATE margin: jarak antar kartu digit sebelumnya kerapetan (padding
-// horizontal cuma 0.045x fontSize per sisi). Sekarang di-lebarin jadi 0.09x
-// fontSize per sisi (2x lipat) biar kartu-kartunya nggak nempel-nempel, dan
-// colon juga dikasih padding kiri-kanan tipis (0.05x) biar spacing-nya
-// konsisten & seimbang di kedua sisi, bukan cuma digitnya doang yang dikasih
-// jarak.
+// Fix: bungkus pemanggilan _buildFlipTimeRow() dengan FittedBox(fit:
+// BoxFit.scaleDown) di kedua tempat pemanggilnya (countdown card utama & popup
+// countdown) -- lihat komentar FIX OVERFLOW di kedua tempat itu. FittedBox
+// otomatis nyusutin child-nya kalau nggak muat, jadi row ini nggak akan pernah
+// overflow lagi di ukuran UI berapa pun. Fungsi ini sendiri TETAP pakai ambient
+// textScaler apa adanya (tidak diubah) supaya urutan style tetap konsisten;
+// FittedBox di pemanggil-lah yang jadi pengaman terakhir.
 Widget _buildFlipTimeRow(
   String text,
   TextStyle style, {
@@ -412,73 +369,84 @@ Widget _buildFlipTimeRow(
   Color? cardBorderColor,
   Color? seamColor,
 }) {
-  final fontSize = style.fontSize ?? 42;
-  final chars = text.split('');
-  final resolvedCardColor = cardColor ?? Colors.black.withValues(alpha: 0.25);
-  final resolvedBorderColor = cardBorderColor ?? Colors.white24;
-  final resolvedSeamColor = seamColor ?? Colors.black.withValues(alpha: 0.35);
-  final digitWidth = fontSize * 0.68;
-  final digitHeight = fontSize * 1.22;
+  return Builder(
+    builder: (context) {
+      final ambientScaler = MediaQuery.textScalerOf(context);
+      final baseFontSize = style.fontSize ?? 42;
+      final scaledFontSize = ambientScaler.scale(baseFontSize);
+      final effectiveStyle = style.copyWith(fontSize: scaledFontSize);
 
-  return Row(
-    mainAxisSize: MainAxisSize.min,
-    children: List.generate(chars.length, (i) {
-      final c = chars[i];
-      final isColon = c == ':';
+      final fontSize = scaledFontSize;
+      final chars = text.split('');
+      final resolvedCardColor = cardColor ?? Colors.black.withValues(alpha: 0.25);
+      final resolvedBorderColor = cardBorderColor ?? Colors.white24;
+      final resolvedSeamColor = seamColor ?? Colors.black.withValues(alpha: 0.35);
+      // FIX SPACING: box digit sebelumnya (0.68 x 1.22) pas-pasan sama
+      // fontSize-nya, jadi angka keliatan mepet ke tepi kotak. Sekarang
+      // dilebarin (0.85 x 1.5) supaya ada "padding" visual di sekeliling
+      // angka tanpa perlu ngecilin fontSize digit itu sendiri.
+      final digitWidth = fontSize * 0.85;
+      final digitHeight = fontSize * 1.5;
 
-      if (isColon) {
-        return Padding(
-          padding: EdgeInsets.symmetric(horizontal: fontSize * 0.05),
-          child: SizedBox(
-            width: fontSize * 0.32,
-            child: Center(
-              child: Text(
-                c,
-                textAlign: TextAlign.center,
-                style: style,
-                strutStyle: StrutStyle(
-                  fontSize: style.fontSize,
-                  fontFamily: style.fontFamily,
-                  height: 1.0,
-                  forceStrutHeight: true,
+      final row = Row(
+        mainAxisSize: MainAxisSize.min,
+        children: List.generate(chars.length, (i) {
+          final c = chars[i];
+          final isColon = c == ':';
+
+          if (isColon) {
+            return Padding(
+              padding: EdgeInsets.symmetric(horizontal: fontSize * 0.05),
+              child: SizedBox(
+                width: fontSize * 0.32,
+                child: Center(
+                  child: Text(
+                    c,
+                    textAlign: TextAlign.center,
+                    style: effectiveStyle,
+                    textScaler: TextScaler.noScaling,
+                    strutStyle: StrutStyle(
+                      fontSize: effectiveStyle.fontSize,
+                      fontFamily: effectiveStyle.fontFamily,
+                      height: 1.0,
+                      forceStrutHeight: true,
+                    ),
+                  ),
+                ),
+              ),
+            );
+          }
+
+          return Padding(
+            padding: EdgeInsets.symmetric(horizontal: fontSize * 0.09),
+            child: SizedBox(
+              width: digitWidth,
+              height: digitHeight,
+              child: _FlipSwitcher(
+                child: _buildFlipDigitCard(
+                  c,
+                  effectiveStyle,
+                  cardColor: resolvedCardColor,
+                  borderColor: resolvedBorderColor,
+                  seamColor: resolvedSeamColor,
+                  width: digitWidth,
+                  height: digitHeight,
+                  key: ValueKey('$i-$c'),
                 ),
               ),
             ),
-          ),
-        );
-      }
-
-      return Padding(
-        padding: EdgeInsets.symmetric(horizontal: fontSize * 0.09),
-        child: SizedBox(
-          width: digitWidth,
-          height: digitHeight,
-          child: _FlipSwitcher(
-            // Key gabungan posisi + nilai karakter -> AnimatedSwitcher cuma
-            // trigger flip kalau NILAI di posisi itu berubah, bukan asal beda
-            // karakter di posisi lain (bug sebelumnya pakai indexOf yang keliru
-            // ambil posisi kemunculan PERTAMA karakter itu di seluruh string).
-            child: _buildFlipDigitCard(
-              c,
-              style,
-              cardColor: resolvedCardColor,
-              borderColor: resolvedBorderColor,
-              seamColor: resolvedSeamColor,
-              width: digitWidth,
-              height: digitHeight,
-              key: ValueKey('$i-$c'),
-            ),
-          ),
-        ),
+          );
+        }),
       );
-    }),
+
+      return MediaQuery(
+        data: MediaQuery.of(context).copyWith(textScaler: TextScaler.noScaling),
+        child: row,
+      );
+    },
   );
 }
 
-// --- Konversi & format tanggal Masehi <-> Hijriyah ---
-// Konversi pakai algoritma "Tabular Islamic Calendar" (basis Julian Day
-// Number) — nggak butuh package/dependency tambahan, cukup akurat buat
-// tampilan tanggal (bisa selisih ±1 hari dari rukyat/hisab resmi setempat).
 int _gregorianToJulianDay(int year, int month, int day) {
   final a = ((14 - month) / 12).floor();
   final y = year + 4800 - a;
@@ -492,7 +460,6 @@ int _gregorianToJulianDay(int year, int month, int day) {
       32045;
 }
 
-// Return [tahunHijriyah, bulanHijriyah(1-12), tanggalHijriyah]
 List<int> _gregorianToHijri(DateTime date) {
   final jd = _gregorianToJulianDay(date.year, date.month, date.day);
   var l = jd - 1948440 + 10632;
@@ -510,8 +477,6 @@ List<int> _gregorianToHijri(DateTime date) {
   return [year, month, day];
 }
 
-// Nama bulan Hijriyah — dipakai apa adanya (transliterasi Latin) buat semua
-// bahasa, karena ini yang paling umum dikenali lintas bahasa di app sejenis.
 const List<String> _hijriMonthNames = [
   'Muharram', 'Safar', 'Rabiul Awal', 'Rabiul Akhir',
   'Jumadil Awal', 'Jumadil Akhir', 'Rajab', 'Syaban',
@@ -523,9 +488,6 @@ String _formatHijriDate(DateTime date) {
   return '${h[2]} ${_hijriMonthNames[h[1] - 1]} ${h[0]} H';
 }
 
-// Nama hari & bulan Masehi per bahasa (bukan lewat intl.DateFormat locale,
-// karena app ini belum inisialisasi date-symbol-data buat locale non-en —
-// jadi dibikin tabel manual sendiri, konsisten sama pola _translations).
 String _formatGregorianDate(DateTime date, String lang) {
   const idDays = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu'];
   const idMonths = [
@@ -542,7 +504,7 @@ String _formatGregorianDate(DateTime date, String lang) {
   const zhMonths = ['一月', '二月', '三月', '四月', '五月', '六月', '七月', '八月', '九月', '十月', '十一月', '十二月'];
   const zhDays = ['星期一', '星期二', '星期三', '星期四', '星期五', '星期六', '星期日'];
 
-  final wd = date.weekday - 1; // Senin=0
+  final wd = date.weekday - 1;
   final mo = date.month - 1;
 
   switch (lang) {
@@ -598,11 +560,6 @@ class _MyAppState extends State<MyApp> {
       debugShowCheckedModeBanner: false,
       title: 'PrayTime',
       themeMode: _themeMode,
-      // FIX: ThemeData.light().copyWith(fontFamily: ...) ERROR karena copyWith()
-      // pada ThemeData tidak menyediakan parameter fontFamily (keterbatasan
-      // bawaan Flutter). Solusinya: bangun ThemeData langsung lewat constructor
-      // biasa (bukan .light().copyWith()/.dark().copyWith()), karena constructor
-      // ThemeData() punya parameter fontFamily.
       theme: ThemeData(
         brightness: Brightness.light,
         fontFamily: 'MontserratAlternates',
@@ -697,21 +654,10 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
   late PrayerTimes _prayerTimes;
 
   Timer? _timer;
-  // Data next-prayer/countdown dipindah ke ValueNotifier: update tiap detik lewat
-  // notifier ini TIDAK memanggil setState() layar penuh, jadi cuma widget yang
-  // dengar (ValueListenableBuilder di kartu countdown) yang rebuild tiap detik —
-  // bukan seluruh layar (list waktu sholat, bar lokasi, menu bawah, dst).
   final ValueNotifier<_NextPrayerInfo> _nextPrayerNotifier =
       ValueNotifier(const _NextPrayerInfo(remaining: Duration.zero, prayerKey: 'fajr', isNextDay: false));
-  // Notifier terpisah khusus buat penanda kartu "waktu sholat berikutnya" (ambient
-  // glow). Dipisah dari _nextPrayerNotifier supaya list waktu sholat TIDAK ikut
-  // rebuild tiap detik — ValueNotifier hanya notify listener kalau value-nya
-  // benar-benar berubah (lihat setter bawaan Flutter), jadi walau kita assign
-  // string yang sama tiap detik, UI cuma rebuild pas prayer key-nya ganti.
   final ValueNotifier<String> _highlightedPrayerKeyNotifier = ValueNotifier('fajr');
   bool _isLoadingGps = false;
-  // Toggle tampilan tanggal: false = Masehi, true = Hijriyah. Nggak disimpan
-  // ke prefs (reset ke Masehi tiap buka app) — sengaja simpel dulu.
   bool _showHijri = false;
   String _alarmMode = 'ring';
   String? _customAlarmPath;
@@ -723,14 +669,9 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
   AudioPlayer? _audioPlayer;
   DateTime? _lastAlarmPlayedAt;
   DateTime _lastCalculatedDate = DateTime.now();
-  // Controller buat efek "liquid glass shine" di kartu waktu sholat berikutnya.
-  // Sekarang dipecah jadi 2 fase dalam 1 siklus: fase sapuan (kilapan beneran
-  // lewat, kecepatannya TETAP sama kayak sebelumnya — lihat _shineSweepMs) lalu
-  // fase diam/nunggu (nggak kelihatan sama sekali) sampai siklus abis. Total
-  // siklus (jarak antar kilapan) sekarang 6.5 detik, di rentang 5-7.5 detik.
   late AnimationController _glowPulseController;
-  static const int _shineCycleMs = 5000; // jarak antar kilapan (5-7.5 dtk)
-  static const int _shineSweepMs = 2200; // durasi 1x sapuan — kecepatan shine, jangan diubah
+  static const int _shineCycleMs = 5000;
+  static const int _shineSweepMs = 2200;
 
   @override
   void initState() {
@@ -752,8 +693,6 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
     _customAlarmPath = widget.prefs.getString('custom_alarm_path');
     _customAlarmFileName = widget.prefs.getString('custom_alarm_filename');
     if (kIsWeb) {
-      // Di web, isi file (bytes) tidak bisa disimpan permanen antar sesi/reload,
-      // jadi nama file lama dianggap tidak valid lagi sampai dipilih ulang.
       _customAlarmFileName = null;
       _customAlarmPath = null;
     }
@@ -807,14 +746,10 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
     }
   }
 
-  // Mapping non-linear: 50% = ukuran normal device (1x), 100% = 1.5x (masih nyaman
-  // dibaca, nggak kegedean), 0% = 0.75x (masih nyaman dibaca, nggak kekecilan).
   double get _uiScale {
     if (_uiScalePercentage <= 50) {
-      // 0% -> 0.75x ... 50% -> 1.0x
       return 0.75 + (_uiScalePercentage / 50) * 0.25;
     } else {
-      // 50% -> 1.0x ... 100% -> 1.5x
       return 1.0 + ((_uiScalePercentage - 50) / 50) * 0.5;
     }
   }
@@ -845,10 +780,6 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
       await _audioPlayer?.setVolume(_alarmVolume);
       await _audioPlayer?.play();
     } catch (e) {
-      // Dulu error di sini ditelan diam-diam (catch (_) {}), jadi kalau file
-      // gagal diputar (format tidak didukung, path tidak valid, dll) tidak ada
-      // tanda apa pun ke user — kelihatan seperti tombolnya tidak berfungsi.
-      // Sekarang errornya ditampilkan lewat SnackBar + dicatat ke console.
       debugPrint('Alarm playback error: $e');
       _showSnackBar(_t('alarm_play_error'));
     }
@@ -868,11 +799,6 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
     for (final entry in prayerTimes.entries) {
       if (!_alarmPrayerTimes.contains(entry.key)) continue;
       final target = entry.value;
-      // FIX: sebelumnya syaratnya `now.second == target.second` (harus PAS di
-      // detik yang sama). Timer kita jalan tiap ~1 detik tapi tidak dijamin
-      // presisi ke detik yang exact sama dengan target (bisa drift dikit),
-      // jadi alarm gampang kelewat & tidak pernah bunyi. Sekarang dicek pakai
-      // jendela toleransi: 0-2 detik SETELAH waktu sholat, jauh lebih andal.
       final diffSeconds = now.difference(target).inSeconds;
       if (diffSeconds >= 0 && diffSeconds <= 2) {
         if (_lastAlarmPlayedAt == null || now.difference(_lastAlarmPlayedAt!).inSeconds >= 60) {
@@ -932,7 +858,6 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
   void _updateCountdown() {
     final now = DateTime.now();
 
-    // Reset perhitungan otomatis jika hari berganti lewat tengah malam
     if (now.day != _lastCalculatedDate.day ||
         now.month != _lastCalculatedDate.month ||
         now.year != _lastCalculatedDate.year) {
@@ -996,7 +921,6 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
     }
   }
 
-  // --- POPUP INTERAKTIF BERSAMA EFEK BLUR (LONG PRESS) ---
   void _showPrayerDetailPopup({
     required String prayerName,
     required DateTime prayerTime,
@@ -1516,17 +1440,11 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
                                         localAlarmFileName != null ? _t('alarm_change_file') : _t('alarm_custom_pick'),
                                         style: const TextStyle(fontSize: 12),
                                       ),
-                                      // FIX: dulu di sini manggil _pickCustomAlarmSound() lalu baca ulang
-                                      // _customAlarmFileName lewat field luar -> ada celah async yang
-                                      // bikin sheet ini nggak ke-refresh sampai ditutup & dibuka lagi.
-                                      // Sekarang pick file langsung di sini, dan begitu hasilnya didapat,
-                                      // langsung dipakai untuk update sheet (setDialogState) & state utama
-                                      // (setState) di saat yang sama, tanpa lewat perantara.
                                       onPressed: () async {
                                         final result = await FilePicker.platform.pickFiles(
                                           type: FileType.custom,
                                           allowedExtensions: ['mp3', 'wav', 'ogg', 'aac'],
-                                          withData: kIsWeb, // di web hanya ada bytes, tidak ada path filesystem
+                                          withData: kIsWeb,
                                         );
                                         if (result == null || result.files.isEmpty) return;
                                         final file = result.files.single;
@@ -1657,9 +1575,6 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
       context: context,
       barrierDismissible: true,
       barrierLabel: 'Dismiss',
-      // Dibikin lebih transparan drpd dialog lain, biar app asli di belakangnya
-      // masih kelihatan jelas & bisa dipantau berubah live pas slider di-drag
-      // (kayak slider brightness di iOS/OneUI).
       barrierColor: Colors.black.withAlpha((0.12 * 255).round()),
       transitionDuration: const Duration(milliseconds: 250),
       pageBuilder: (context, anim1, anim2) {
@@ -1732,9 +1647,6 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
                             max: 100,
                             divisions: 20,
                             label: '$localScale%',
-                            // Update LANGSUNG ke state utama tiap drag, biar seluruh tampilan
-                            // app (di belakang dialog ini) ikut membesar/mengecil real-time —
-                            // bukan cuma preview mini di dalam dialog.
                             onChanged: (value) {
                               final scale = value.toInt();
                               setDialogState(() {
@@ -1864,7 +1776,6 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
       prayerTime = _prayerTimes.timeForPrayer(prayer) ?? DateTime.now();
     }
 
-    // Provide light haptic feedback when opening countdown popup
     HapticFeedback.selectionClick();
     _showPrayerDetailPopup(prayerName: nextName, prayerTime: prayerTime, isCountdown: true);
   }
@@ -1909,7 +1820,6 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
               padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 12.0),
               child: Column(
               children: [
-                // Bar Lokasi
                 AnimatedContainer(
                   duration: const Duration(milliseconds: 300),
                   curve: Curves.easeOut,
@@ -1981,7 +1891,6 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
                 ),
                 const SizedBox(height: 16),
 
-                // Card Countdown (tap or long-press to show prayer detail popup)
                 GestureDetector(
                   onTap: _openNextPrayerPopup,
                   onLongPress: _openNextPrayerPopup,
@@ -1991,13 +1900,6 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
                     width: double.infinity,
                     padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 20),
                     decoration: BoxDecoration(
-                      // FIX color harmony: sebelumnya di mode terang card ini
-                      // SELALU hitam pekat (0xFF1C1C1E) di tengah tema yang
-                      // full putih/abu — jadi nongol sendiri, nggak nyatu.
-                      // Sekarang di mode terang dia ikut keluarga warna card
-                      // lain (putih, cardBgColor) + border tipis buat tetap
-                      // kelihatan sebagai elemen tersendiri, TANPA perlu invert
-                      // jadi kotak hitam. Mode gelap nggak diubah.
                       color: isDark ? const Color(0xFF252525) : cardBgColor,
                       borderRadius: BorderRadius.circular(20),
                       border: isDark
@@ -2012,14 +1914,6 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
                             : _t(info.prayerKey);
                         return Column(
                           children: [
-                            // Baris tanggal — dulu di bar lokasi, sekarang dipindah
-                            // ke sini (posisi yang dulu ditempatin label "NEXT
-                            // PRAYER"). Tap buat toggle Masehi <-> Hijriyah.
-                            // UPDATE: sekarang pakai _SmoothTextSwitcher (fade +
-                            // slide vertikal tipis), bukan _FlipSwitcher lagi —
-                            // pergantian teksnya kerasa lebih flow/halus,
-                            // sebelumnya rotateX 90 derajat pada 1 baris teks
-                            // panjang kerasa patah-patah.
                             GestureDetector(
                               behavior: HitTestBehavior.opaque,
                               onTap: () {
@@ -2044,31 +1938,30 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
                               ),
                             ),
                             const SizedBox(height: 10),
-                            // FIX FONT (lihat catatan lama): fontFamily di-set
-                            // eksplisit + fontWeight w600 biar konsisten sama
-                            // font app, nggak fallback ke font sistem.
-                            //
-                            // UPDATE animasi: sekarang tiap digit dibungkus
-                            // dalam kartu (_buildFlipDigitCard) sebelum di-flip,
-                            // jadi kelihatan kayak kartu fisik yang kebalik
-                            // (ada background tipis + seam tengah), bukan cuma
-                            // teks yang muter. Warna kartu ikut nyesuain dark/light.
-                            _buildFlipTimeRow(
-                              _formatDuration(info.remaining),
-                              TextStyle(
-                                fontFamily: 'MontserratAlternates',
-                                color: isDark ? Colors.white : primaryTextColor,
-                                fontSize: 42,
-                                fontWeight: FontWeight.w600,
-                                letterSpacing: 0,
+                            // FIX OVERFLOW: dibungkus FittedBox(fit: BoxFit.scaleDown)
+                            // supaya kalau row 8-karakter ("00:00:00") hasil scaling
+                            // ambient (_uiScale) jadi lebih lebar dari kartu ini
+                            // (lebar 420 - padding), dia otomatis diskalain turun
+                            // biar tetap pas -- bukan overflow (garis kuning-hitam).
+                            // Ini pengaman terakhir di luar _buildFlipTimeRow, jadi
+                            // aman di UI Size berapa pun (0%-100%).
+                            FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: _buildFlipTimeRow(
+                                _formatDuration(info.remaining),
+                                TextStyle(
+                                  fontFamily: 'MontserratAlternates',
+                                  color: isDark ? Colors.white : primaryTextColor,
+                                  fontSize: 42,
+                                  fontWeight: FontWeight.w600,
+                                  letterSpacing: 0,
+                                ),
+                                cardColor: isDark ? const Color(0xFF303032) : const Color(0xFFF5F5F7),
+                                cardBorderColor: isDark ? Colors.white12 : Colors.black12,
+                                seamColor: isDark ? Colors.black38 : Colors.black.withValues(alpha: 0.08),
                               ),
-                              cardColor: isDark ? const Color(0xFF303032) : const Color(0xFFF5F5F7),
-                              cardBorderColor: isDark ? Colors.white12 : Colors.black12,
-                              seamColor: isDark ? Colors.black38 : Colors.black.withValues(alpha: 0.08),
                             ),
                             const SizedBox(height: 10),
-                            // Label "NEXT PRAYER X" — dulu di atas, sekarang
-                            // dipindah ke bawah digit countdown.
                             Text(
                               '${_t("towards")} ${nextName.toUpperCase()}',
                               style: TextStyle(
@@ -2086,7 +1979,6 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
                 ),
                 const SizedBox(height: 20),
 
-                // List Jadwal Sholat (Bisa di-Long Press)
                 Expanded(
                   child: ListView(
                     children: [
@@ -2330,82 +2222,45 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
           );
         }
 
-        // Kartu next-prayer: efek "liquid glass" — dasar kartu dikasih tint kaca
-        // tipis netral, lalu ada cahaya putih tipis yang menyapu diagonal
-        // berulang terus. Siklus dipecah 2 fase (lihat builder di bawah):
-        // fase sapuan (kilapan beneran lewat + fade in/out di ujungnya) lalu
-        // fase diam (nggak kelihatan sama sekali) sampai siklus berikutnya.
-        //
-        // FIX clipping: sebelumnya margin ada DI DALAM ClipRRect (nempel di
-        // Container yang di-clip), jadi kotak yang di-clip lebih besar dari
-        // kartu yang kelihatan (karena margin ikut dihitung), sementara sapuan
-        // cahaya mengisi penuh kotak konten yang PERSIS sama luasnya dengan
-        // kartu -> sudut sapuan cahaya yang lurus/kotak nongol melewati sudut
-        // tumpul kartu. Sekarang margin dipindah ke Padding DI LUAR ClipRRect,
-        // supaya area yang di-clip presis sama dengan bentuk kartu (radius 12),
-        // dan AnimatedBuilder pakai parameter `child` biar cardInner (yang
-        // nggak berubah tiap frame) nggak ikut dibangun ulang tiap tick animasi.
         return Padding(
           padding: const EdgeInsets.symmetric(vertical: 4.0),
-          // Shadow dihapus lagi atas permintaan — border tipis aja udah cukup
-          // buat nandain kartu ini beda dari yang lain, nggak perlu efek
-          // "keangkat". Jadi balik ke ClipRRect langsung, nggak usah dibungkus
-          // Container tambahan buat shadow.
           child: ClipRRect(
             borderRadius: BorderRadius.circular(12),
             child: AnimatedBuilder(
               animation: _glowPulseController,
               builder: (context, child) {
-                // Siklus dipecah 2 fase: 0..sweepMs = kilapan beneran lewat
-                // (progress 0->1, shift jalan penuh kayak sebelumnya, kecepatan
-                // TIDAK berubah), sisanya = fase diam, shine nggak digambar
-                // sama sekali sampai siklus berikutnya mulai.
                 final elapsedMs = _glowPulseController.value * _shineCycleMs;
                 double progress;
-                double envelope; // 0..1, buat fade in/out si kilapan
+                double envelope;
                 if (elapsedMs <= _shineSweepMs) {
                   progress = elapsedMs / _shineSweepMs;
                   if (progress < 0.18) {
-                    envelope = progress / 0.18; // fade in cepat di awal
+                    envelope = progress / 0.18;
                   } else if (progress > 0.55) {
-                    // fade out landai di ekor kilapan biar nggak putus mendadak
                     envelope = (1 - (progress - 0.55) / 0.45).clamp(0.0, 1.0);
                   } else {
                     envelope = 1.0;
                   }
                 } else {
                   progress = 1.0;
-                  envelope = 0.0; // fase diam
+                  envelope = 0.0;
                 }
-                // Garis gradient (begin/end) digeser bareng dari jauh di kiri ke
-                // jauh di kanan, jadi highlight-nya "menyapu" lewat seluruh kartu.
                 final shift = -2.2 + 4.4 * progress;
 
-                // FIX MODE TERANG: card highlight versi lama warnanya krem/gold
-                // (0xFBF8F2) yang bikin dia kelihatan "keemasan" & nggak
-                // nyambung sama tema app (yang monokrom hitam-putih-abu).
-                //
-                // UPDATE color harmony: sekarang backgroundnya di-blend ke arah
-                // GOLD HANGAT (bukan ke textColor/hitam lagi) dengan opacity
-                // rendah (4%) — biar card ini kerasa "satu keluarga warna" sama
-                // prism sweep-nya (yang emang ada sisi gold/pink), bukan cuma
-                // card netral yang kebetulan ditumpangin kilau warna-warni.
-                // Border-nya juga ikut dihangatkan senada.
-                //
-                // UPDATE (fix mode terang, v3 — PRISMA REDUP, dipilih user):
-                // Percobaan pertama (mono gelap tipis) aman tapi kerasa datar.
-                // Sekarang balik ke konsep PRISMA kayak semula (cyan -> putih
-                // -> pink, efek dispersi kaca), TAPI opacity-nya jauh
-                // diturunin dibanding versi paling awal yang kelewat
-                // mencolok: puncak putih dari 0.55 -> 0.35, fringe cyan/pink
-                // dari 0.06 -> 0.10 (sedikit dinaikkan drpd versi awal krn di
-                // atas background terang warnanya lebih gampang "hilang").
-                // Rentang stop juga dilebarin (26%-70% vs sebelumnya
-                // 38%-62%) biar transisinya lebih landai/halus, nggak
-                // berasa nge-blok.
                 if (!isDark) {
+                  // FIX NATURALNESS: versi lama pakai SATU gradient 5-stop dengan
+                  // alpha tinggi (cyan 0.10, putih 0.35, pink 0.10) sekaligus,
+                  // jadi 3 warna itu numpuk & nongol bareng -> kesannya "prisma"/
+                  // pelangi, nggak natural. Sekarang strukturnya disamain kayak
+                  // versi mode gelap: dipecah jadi 3 layer terpisah (fringe cyan
+                  // tipis, band utama hangat, fringe pink tipis), masing-masing
+                  // alpha-nya jauh lebih rendah (mirip proporsi di mode gelap:
+                  // 0.06 buat fringe, ~0.16 buat band utama) -- hasilnya cuma
+                  // kerasa "kilau kaca" tipis lewat, bukan pelangi mencolok.
                   final tintedBg = Color.lerp(cardBg, textColor, 0.035)!;
                   final tintedBorder = textColor.withValues(alpha: 0.14);
+                  final cyanShiftLight = shift - 0.05;
+                  final magentaShiftLight = shift + 0.05;
 
                   return Container(
                     decoration: BoxDecoration(
@@ -2421,14 +2276,48 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
                             child: DecoratedBox(
                               decoration: BoxDecoration(
                                 gradient: LinearGradient(
-                                  begin: Alignment(-1 + shift, -1),
-                                  end: Alignment(1 + shift, 1),
-                                  stops: const [0.26, 0.38, 0.48, 0.58, 0.70],
+                                  begin: Alignment(-1 + cyanShiftLight, -1),
+                                  end: Alignment(1 + cyanShiftLight, 1),
+                                  stops: const [0.4, 0.5, 0.6],
                                   colors: [
                                     Colors.transparent,
-                                    const Color(0xFF8FE9FF).withValues(alpha: 0.10 * envelope), // fringe cyan
-                                    Colors.white.withValues(alpha: 0.35 * envelope), // hotspot putih (puncak, diredupkan)
-                                    const Color(0xFFFF9ED2).withValues(alpha: 0.10 * envelope), // fringe pink
+                                    const Color(0xFF8FE9FF).withValues(alpha: 0.05 * envelope),
+                                    Colors.transparent,
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        Positioned.fill(
+                          child: IgnorePointer(
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment(-1 + shift, -1),
+                                  end: Alignment(1 + shift, 1),
+                                  stops: const [0.35, 0.5, 0.65],
+                                  colors: [
+                                    Colors.transparent,
+                                    textColor.withValues(alpha: 0.16 * envelope),
+                                    Colors.transparent,
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        Positioned.fill(
+                          child: IgnorePointer(
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment(-1 + magentaShiftLight, -1),
+                                  end: Alignment(1 + magentaShiftLight, 1),
+                                  stops: const [0.4, 0.5, 0.6],
+                                  colors: [
+                                    Colors.transparent,
+                                    const Color(0xFFFF9ED2).withValues(alpha: 0.05 * envelope),
                                     Colors.transparent,
                                   ],
                                 ),
@@ -2441,30 +2330,17 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
                   );
                 }
 
-                // Offset dikit buat 2 lapis fringe warna (cyan & magenta) di
-                // kiri-kanan sapuan utama -> efek dispersi cahaya ala kaca
-                // prisma (lihat referensi). Jaraknya sengaja kecil (0.05) &
-                // alpha-nya rendah banget supaya cuma kerasa "dikit" di tepi,
-                // bukan pelangi mencolok. Ini CUMA dipakai di mode gelap.
                 final cyanShift = shift - 0.05;
                 final magentaShift = shift + 0.05;
 
                 return Container(
                   decoration: BoxDecoration(
                     color: cardBg,
-                    // FIX: dulu Container ini nggak punya borderRadius sama
-                    // sekali, padahal dia dibungkus ClipRRect(radius 12) di
-                    // luar. Border-nya jadinya digambar KOTAK LURUS dulu baru
-                    // dipotong paksa sama ClipRRect di keempat sudut -> muncul
-                    // notch/celah kecil pas ketemu kartu tetangga (Dhuhr &
-                    // Maghrib). Sekarang borderRadius disamakan (12) biar
-                    // border ikut melengkung dari awal, nggak kepotong lagi.
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
                       color: Colors.white.withValues(alpha: 0.16),
                       width: 1.2,
                     ),
-                    // Tint kaca tipis netral, konstan (nggak ikut animasi)
                     gradient: LinearGradient(
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
@@ -2477,13 +2353,6 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
                   child: Stack(
                     children: [
                       child!,
-                      // Overlay sapuan cahaya (shine) - IgnorePointer biar nggak
-                      // ganggu tap/long-press di kartu. Ke-clip presis sesuai
-                      // bentuk kartu lewat ClipRRect di luar, dan memudar
-                      // (fade in/out) lewat `envelope`. Sekarang ada 3 lapis:
-                      // fringe cyan, band utama (gold pucat), fringe magenta —
-                      // biar kerasa dispersi kaca kayak referensi, tapi tetep
-                      // tipis banget. (Khusus mode gelap — tidak diubah.)
                       Positioned.fill(
                         child: IgnorePointer(
                           child: DecoratedBox(
@@ -2546,10 +2415,6 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
                   ),
                 );
               },
-              // `child` di sini = cardInner. AnimatedBuilder cuma manggil ulang
-              // `builder` tiap tick, TAPI `child` (ListTile/InkWell/Material)
-              // dibangun sekali dan dipakai ulang terus — jadi animasi shine
-              // murah, nggak ikut rebuild seluruh konten kartu tiap frame.
               child: cardInner,
             ),
           ),
@@ -2559,7 +2424,6 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
   }
 }
 
-// Opsi satu segmen untuk _AnimatedSegmentedToggle
 class _SegmentOption<T> {
   final T value;
   final String label;
@@ -2567,7 +2431,6 @@ class _SegmentOption<T> {
   const _SegmentOption({required this.value, required this.label, required this.icon});
 }
 
-// Toggle N-opsi dengan indikator pill yang meluncur (dipakai utk Ring/Vibrate & Tema)
 class _AnimatedSegmentedToggle<T> extends StatelessWidget {
   final bool isDark;
   final T value;
@@ -2684,7 +2547,6 @@ class _AnimatedSegmentedToggle<T> extends StatelessWidget {
   }
 }
 
-// Dialog Pencarian
 class _CitySearchDialog extends StatefulWidget {
   final String Function(String) t;
   final String? currentLanguageCode;
@@ -2821,7 +2683,6 @@ class _CitySearchDialogState extends State<_CitySearchDialog> {
   }
 }
 
-
 class _CountdownPopupContent extends StatefulWidget {
   final DateTime targetTime;
   final String prayerName;
@@ -2906,22 +2767,24 @@ class _CountdownPopupContentState extends State<_CountdownPopupContent> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // FIX FONT: sama seperti kartu countdown utama — fontFamily
-          // eksplisit + fontWeight w600, biar konsisten.
-          // UPDATE animasi: pakai flip card yang sama kayak card utama, biar
-          // konsisten (dulu popup ini polos, sekarang ikut flip card juga).
-          _buildFlipTimeRow(
-            _format(_remaining),
-            TextStyle(
-              fontFamily: 'MontserratAlternates',
-              fontSize: 52,
-              fontWeight: FontWeight.w600,
-              color: neutralAccent,
-              letterSpacing: 0,
+          // FIX OVERFLOW: sama seperti countdown card utama, dibungkus FittedBox
+          // supaya nggak overflow kalau ambient scaler bikin row-nya lebih lebar
+          // dari 90% lebar layar (width dialog ini).
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: _buildFlipTimeRow(
+              _format(_remaining),
+              TextStyle(
+                fontFamily: 'MontserratAlternates',
+                fontSize: 52,
+                fontWeight: FontWeight.w600,
+                color: neutralAccent,
+                letterSpacing: 0,
+              ),
+              cardColor: widget.isDark ? const Color(0xFF3A3A3C) : const Color(0xFFF5F5F7),
+              cardBorderColor: widget.isDark ? Colors.white24 : Colors.black12,
+              seamColor: widget.isDark ? Colors.black45 : Colors.black.withValues(alpha: 0.12),
             ),
-            cardColor: widget.isDark ? const Color(0xFF3A3A3C) : const Color(0xFFF5F5F7),
-            cardBorderColor: widget.isDark ? Colors.white24 : Colors.black12,
-            seamColor: widget.isDark ? Colors.black45 : Colors.black.withValues(alpha: 0.12),
           ),
           const SizedBox(height: 12),
           Text(
