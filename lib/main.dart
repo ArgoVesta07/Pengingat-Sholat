@@ -140,7 +140,7 @@ final Map<String, Map<String, String>> _translations = {
     'alarm_remove_file': 'Hapus nada dering',
     'alarm_volume': 'Volume Alarm',
     'alarm_test': 'Tes Suara',
-    'alarm_hint': 'Atur tiap waktu sholat: berdering atau getar, dan nada deringnya. Ketuk ikon alarm di jadwal untuk aktifkan/matikan cepat.',
+    'alarm_hint': 'Ketuk ikon alarm di samping waktu sholat untuk ganti: Dering → Getar → Mati. Tekan lama ikonnya untuk pilih nada dering sholat itu.',
     'alarm_play_error': 'Gagal memutar suara alarm. Coba pilih ulang file-nya.',
     'alarm_file_too_large': 'File terlalu besar. Maksimal 2 MB untuk versi web.',
     'alarm_select_prayers': 'Pilih waktu sholat',
@@ -195,7 +195,7 @@ final Map<String, Map<String, String>> _translations = {
     'alarm_remove_file': 'Remove ringtone',
     'alarm_volume': 'Alarm Volume',
     'alarm_test': 'Test Sound',
-    'alarm_hint': 'Set each prayer separately: ring or vibrate, and its ringtone. Tap the alarm icon on the schedule to turn it on/off quickly.',
+    'alarm_hint': 'Tap the alarm icon beside a prayer time to switch: Ring → Vibrate → Off. Long-press the icon to choose that prayer\'s ringtone.',
     'alarm_play_error': 'Failed to play the alarm sound. Try selecting the file again.',
     'alarm_file_too_large': 'File is too large. Maximum 2 MB on the web version.',
     'alarm_select_prayers': 'Select prayer times',
@@ -248,7 +248,7 @@ final Map<String, Map<String, String>> _translations = {
     'alarm_remove_file': '着信音を削除',
     'alarm_volume': 'アラーム音量',
     'alarm_test': 'サウンドをテスト',
-    'alarm_hint': '礼拝時間ごとにベルかバイブ、着信音を設定できます。スケジュールのアラームアイコンをタップすると素早くオン/オフできます。',
+    'alarm_hint': '礼拝時間の横のアラームアイコンをタップすると ベル → バイブ → オフ と切り替わります。長押しでその礼拝の着信音を選べます。',
     'alarm_play_error': 'アラーム音の再生に失敗しました。ファイルを選び直してください。',
     'alarm_file_too_large': 'ファイルが大きすぎます。Web版では最大2MBです。',
     'alarm_select_prayers': '礼拝時間を選択',
@@ -302,7 +302,7 @@ final Map<String, Map<String, String>> _translations = {
     'alarm_remove_file': '删除铃声',
     'alarm_volume': '闹钟音量',
     'alarm_test': '测试声音',
-    'alarm_hint': '可为每个祷告时间分别设置响铃或振动以及铃声。点击日程中的闹钟图标可快速开关。',
+    'alarm_hint': '点击祷告时间旁的闹钟图标可切换：响铃 → 振动 → 关闭。长按图标可为该祷告选择铃声。',
     'alarm_play_error': '播放闹钟声音失败，请重新选择文件。',
     'alarm_file_too_large': '文件过大。网页版最大为 2 MB。',
     'alarm_select_prayers': '选择祷告时间',
@@ -1483,7 +1483,37 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
     );
   }
 
-  void _openAlarmSettingsBottomSheet() {
+  /// Ketuk ikon alarm di jadwal: Dering -> Getar -> Mati -> Dering.
+  void _cyclePrayerAlarm(String prayerKey) {
+    final c = _alarmConfigs[prayerKey]!;
+    setState(() {
+      if (!c.enabled) {
+        c.enabled = true;
+        c.mode = 'ring';
+      } else if (c.mode == 'ring') {
+        c.mode = 'vibrate';
+      } else {
+        c.enabled = false;
+      }
+    });
+    _saveAlarmSettings();
+    if (c.enabled && c.mode == 'vibrate') {
+      HapticFeedback.vibrate();
+    } else {
+      HapticFeedback.selectionClick();
+    }
+    _showSnackBar('${_t(prayerKey)} · ${_alarmSummary(prayerKey)}');
+  }
+
+  String _alarmSummary(String prayerKey) {
+    final c = _alarmConfigs[prayerKey]!;
+    if (!c.enabled) return _t('alarm_off');
+    if (c.mode == 'vibrate') return _t('alarm_mode_vibrate');
+    return '${_t('alarm_mode_ring')} · ${c.fileName ?? _t('alarm_default_tone')}';
+  }
+
+  /// Kerangka dialog alarm (blur + slide up) yang dipakai dua dialog di bawah.
+  void _showAlarmDialog({required Widget Function(BuildContext, bool isDark, void Function(VoidCallback) update) builder}) {
     showGeneralDialog<void>(
       context: context,
       barrierDismissible: true,
@@ -1492,8 +1522,6 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
       transitionDuration: const Duration(milliseconds: 250),
       pageBuilder: (context, anim1, anim2) {
         final isDark = Theme.of(context).brightness == Brightness.dark;
-        String? expandedKey;
-
         return BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
           child: Align(
@@ -1508,8 +1536,6 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
                     setDialogState(() {});
                   }
 
-                  final labelStyle = TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.bold);
-
                   return Container(
                     width: MediaQuery.of(context).size.width * 0.9,
                     constraints: BoxConstraints(
@@ -1521,103 +1547,34 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
                       color: isDark ? const Color(0xFF2C2C2E).withAlpha((0.95 * 255).round()) : Colors.white,
                       borderRadius: BorderRadius.circular(16),
                     ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          _t('alarm_settings'),
-                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                        ),
-                        const SizedBox(height: 10),
-                        Text(
-                          _t('alarm_hint'),
-                          style: TextStyle(color: isDark ? Colors.white70 : Colors.black54, fontSize: 13),
-                        ),
-                        const SizedBox(height: 16),
-                        Flexible(
-                          child: SingleChildScrollView(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                for (final key in _prayerKeys) ...[
-                                  _buildPrayerAlarmTile(
-                                    prayerKey: key,
-                                    isDark: isDark,
-                                    expanded: expandedKey == key,
-                                    onToggleExpanded: () => setDialogState(() {
-                                      expandedKey = expandedKey == key ? null : key;
-                                    }),
-                                    update: update,
-                                  ),
-                                  const SizedBox(height: 8),
-                                ],
-                                const SizedBox(height: 10),
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Text(_t('alarm_volume'), style: labelStyle),
-                                    Text(
-                                      '${(_alarmVolume * 100).round()}%',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w600,
-                                        color: isDark ? Colors.white70 : Colors.black87,
-                                      ),
-                                    ),
-                                  ],
+                    child: SingleChildScrollView(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          builder(context, isDark, update),
+                          const SizedBox(height: 16),
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton(
+                              onPressed: () => Navigator.pop(context),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: isDark ? Colors.grey[300] : const Color(0xFF1C1C1E),
+                                foregroundColor: isDark ? Colors.black : Colors.white,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14),
                                 ),
-                                Row(
-                                  children: [
-                                    Icon(
-                                      _alarmVolume == 0
-                                          ? Icons.volume_off_rounded
-                                          : (_alarmVolume < 0.5 ? Icons.volume_down_rounded : Icons.volume_up_rounded),
-                                      size: 20,
-                                      color: isDark ? Colors.white70 : Colors.black54,
-                                    ),
-                                    Expanded(
-                                      child: Slider(
-                                        value: _alarmVolume,
-                                        min: 0,
-                                        max: 1,
-                                        divisions: 20,
-                                        label: '${(_alarmVolume * 100).round()}%',
-                                        onChanged: (value) {
-                                          update(() => _alarmVolume = value);
-                                          // Volume langsung ikut berubah kalau tes suara lagi bunyi.
-                                          _audioPlayer?.setVolume(value);
-                                        },
-                                        onChangeEnd: (_) => _saveAlarmSettings(),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton(
-                            onPressed: () => Navigator.pop(context),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: isDark ? Colors.grey[300] : const Color(0xFF1C1C1E),
-                              foregroundColor: isDark ? Colors.black : Colors.white,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(14),
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                elevation: 0,
                               ),
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                              elevation: 0,
-                            ),
-                            child: Text(
-                              _t('close'),
-                              style: const TextStyle(fontWeight: FontWeight.bold),
+                              child: Text(
+                                _t('close'),
+                                style: const TextStyle(fontWeight: FontWeight.bold),
+                              ),
                             ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   );
                 },
@@ -1638,128 +1595,102 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
     });
   }
 
-  /// Satu baris waktu sholat di dialog alarm: nama, ringkasan, saklar,
-  /// dan (kalau dibuka) pilihan dering/getar serta nadanya.
-  Widget _buildPrayerAlarmTile({
-    required String prayerKey,
-    required bool isDark,
-    required bool expanded,
-    required VoidCallback onToggleExpanded,
-    required void Function(VoidCallback) update,
-  }) {
-    final c = _alarmConfigs[prayerKey]!;
-    final primary = Theme.of(context).colorScheme.primary;
-    final mutedColor = isDark ? Colors.white54 : Colors.black54;
-    final summary = !c.enabled
-        ? _t('alarm_off')
-        : c.mode == 'vibrate'
-            ? _t('alarm_mode_vibrate')
-            : '${_t('alarm_mode_ring')} · ${c.fileName ?? _t('alarm_default_tone')}';
-
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 220),
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1B1B1D) : const Color(0xFFF5F5F7),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: expanded ? primary.withValues(alpha: 0.45) : (isDark ? Colors.white12 : Colors.black12),
-        ),
-      ),
-      child: Material(
-        color: Colors.transparent,
-        borderRadius: BorderRadius.circular(12),
-        clipBehavior: Clip.antiAlias,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            InkWell(
-              onTap: onToggleExpanded,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(14, 8, 6, 8),
-                child: Row(
-                  children: [
-                    Icon(
-                      !c.enabled
-                          ? Icons.alarm_off_rounded
-                          : (c.mode == 'vibrate' ? Icons.vibration_rounded : Icons.notifications_active_rounded),
-                      size: 18,
-                      color: c.enabled ? primary : mutedColor,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            _t(prayerKey),
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              color: isDark ? Colors.white : Colors.black87,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            summary,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(fontSize: 12, color: mutedColor),
-                          ),
-                        ],
-                      ),
-                    ),
-                    AnimatedRotation(
-                      turns: expanded ? 0.5 : 0,
-                      duration: const Duration(milliseconds: 220),
-                      child: Icon(Icons.expand_more_rounded, size: 20, color: mutedColor),
-                    ),
-                    Switch.adaptive(
-                      value: c.enabled,
-                      onChanged: (v) {
-                        update(() => c.enabled = v);
-                        _saveAlarmSettings();
-                      },
-                    ),
-                  ],
+  /// Menu Alarm di bawah: cuma cara pakai dan volume.
+  void _openAlarmSettingsBottomSheet() {
+    _showAlarmDialog(builder: (context, isDark, update) {
+      final labelStyle = TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.bold);
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(_t('alarm_settings'), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 10),
+          Text(
+            _t('alarm_hint'),
+            style: TextStyle(color: isDark ? Colors.white70 : Colors.black54, fontSize: 13, height: 1.4),
+          ),
+          const SizedBox(height: 18),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(_t('alarm_volume'), style: labelStyle),
+              Text(
+                '${(_alarmVolume * 100).round()}%',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: isDark ? Colors.white70 : Colors.black87),
+              ),
+            ],
+          ),
+          Row(
+            children: [
+              Icon(
+                _alarmVolume == 0
+                    ? Icons.volume_off_rounded
+                    : (_alarmVolume < 0.5 ? Icons.volume_down_rounded : Icons.volume_up_rounded),
+                size: 20,
+                color: isDark ? Colors.white70 : Colors.black54,
+              ),
+              Expanded(
+                child: Slider(
+                  value: _alarmVolume,
+                  min: 0,
+                  max: 1,
+                  divisions: 20,
+                  label: '${(_alarmVolume * 100).round()}%',
+                  onChanged: (value) {
+                    update(() => _alarmVolume = value);
+                    // Volume langsung ikut berubah kalau tes suara lagi bunyi.
+                    _audioPlayer?.setVolume(value);
+                  },
+                  onChangeEnd: (_) => _saveAlarmSettings(),
                 ),
               ),
-            ),
-            AnimatedSize(
-              duration: const Duration(milliseconds: 240),
-              curve: Curves.easeOutCubic,
-              alignment: Alignment.topCenter,
-              child: !expanded
-                  ? const SizedBox(width: double.infinity)
-                  : Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _AnimatedSegmentedToggle<String>(
-                            isDark: isDark,
-                            value: c.mode,
-                            options: [
-                              _SegmentOption(value: 'ring', label: _t('alarm_mode_ring'), icon: Icons.notifications_active_rounded),
-                              _SegmentOption(value: 'vibrate', label: _t('alarm_mode_vibrate'), icon: Icons.vibration_rounded),
-                            ],
-                            onChanged: (value) {
-                              update(() => c.mode = value);
-                              _saveAlarmSettings();
-                              if (value == 'vibrate') HapticFeedback.vibrate();
-                            },
-                          ),
-                          if (c.mode == 'ring') ...[
-                            const SizedBox(height: 10),
-                            _buildRingtoneCard(prayerKey: prayerKey, isDark: isDark, update: update),
-                          ],
-                        ],
-                      ),
-                    ),
-            ),
-          ],
-        ),
-      ),
-    );
+            ],
+          ),
+        ],
+      );
+    });
+  }
+
+  /// Tekan lama ikon alarm di jadwal: atur mode & nada untuk satu waktu sholat.
+  void _openPrayerAlarmSheet(String prayerKey) {
+    _showAlarmDialog(builder: (context, isDark, update) {
+      final c = _alarmConfigs[prayerKey]!;
+      final mode = c.enabled ? c.mode : 'off';
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(_t(prayerKey), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 16),
+          _AnimatedSegmentedToggle<String>(
+            isDark: isDark,
+            value: mode,
+            options: [
+              _SegmentOption(value: 'ring', label: _t('alarm_mode_ring'), icon: Icons.alarm_on_rounded),
+              _SegmentOption(value: 'vibrate', label: _t('alarm_mode_vibrate'), icon: Icons.vibration_rounded),
+              _SegmentOption(value: 'off', label: _t('alarm_off'), icon: Icons.alarm_off_rounded),
+            ],
+            onChanged: (value) {
+              update(() {
+                c.enabled = value != 'off';
+                if (value != 'off') c.mode = value;
+              });
+              _saveAlarmSettings();
+              if (value == 'vibrate') HapticFeedback.vibrate();
+            },
+          ),
+          AnimatedSize(
+            duration: const Duration(milliseconds: 240),
+            curve: Curves.easeOutCubic,
+            alignment: Alignment.topCenter,
+            child: mode != 'ring'
+                ? const SizedBox(width: double.infinity)
+                : Padding(
+                    padding: const EdgeInsets.only(top: 12),
+                    child: _buildRingtoneCard(prayerKey: prayerKey, isDark: isDark, update: update),
+                  ),
+          ),
+        ],
+      );
+    });
   }
 
   /// Kartu nada dering: nama file dapat satu baris penuh, tombol aksi di bawahnya
@@ -1783,8 +1714,9 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF242426) : Colors.white,
-        borderRadius: BorderRadius.circular(10),
+        color: isDark ? const Color(0xFF1B1B1D) : const Color(0xFFF5F5F7),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: isDark ? Colors.white12 : Colors.black12),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2035,6 +1967,7 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
   void _showSnackBar(String msg) {
     if (mounted) {
       final isDark = Theme.of(context).brightness == Brightness.dark;
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(msg, style: TextStyle(color: isDark ? Colors.black : Colors.white)),
@@ -2468,11 +2401,10 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
                   const SizedBox(width: 12),
                   InkWell(
                     borderRadius: BorderRadius.circular(12),
-                    onTap: () {
-                      setState(() {
-                        alarmConfig.enabled = !alarmActive;
-                        _saveAlarmSettings();
-                      });
+                    onTap: () => _cyclePrayerAlarm(prayerKey),
+                    onLongPress: () {
+                      HapticFeedback.selectionClick();
+                      _openPrayerAlarmSheet(prayerKey);
                     },
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 220),
@@ -2495,7 +2427,7 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
                         ),
                         child: Icon(
                           !alarmActive
-                              ? Icons.alarm_outlined
+                              ? Icons.alarm_off_rounded
                               : (alarmVibrate ? Icons.vibration_rounded : Icons.alarm_on_rounded),
                           key: ValueKey('$alarmActive$alarmVibrate'),
                           color: iconColor,
