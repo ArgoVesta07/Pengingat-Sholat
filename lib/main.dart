@@ -140,7 +140,7 @@ final Map<String, Map<String, String>> _translations = {
     'alarm_remove_file': 'Hapus nada dering',
     'alarm_volume': 'Volume Alarm',
     'alarm_test': 'Tes Suara',
-    'alarm_hint': 'Ketuk ikon alarm di samping waktu sholat untuk ganti: Dering → Getar → Mati. Tekan lama ikonnya untuk pilih nada dering dan volume.',
+    'alarm_hint': 'Nada dering dan volume ini dipakai semua waktu sholat. Untuk Dering / Getar / Mati, ketuk ikon alarm di samping waktu sholat.',
     'alarm_play_error': 'Gagal memutar suara alarm. Coba pilih ulang file-nya.',
     'alarm_file_too_large': 'File terlalu besar. Maksimal 2 MB untuk versi web.',
     'alarm_select_prayers': 'Pilih waktu sholat',
@@ -195,7 +195,7 @@ final Map<String, Map<String, String>> _translations = {
     'alarm_remove_file': 'Remove ringtone',
     'alarm_volume': 'Alarm Volume',
     'alarm_test': 'Test Sound',
-    'alarm_hint': 'Tap the alarm icon beside a prayer time to switch: Ring → Vibrate → Off. Long-press the icon to choose the ringtone and volume.',
+    'alarm_hint': 'This ringtone and volume are used for every prayer. For Ring / Vibrate / Off, tap the alarm icon beside a prayer time.',
     'alarm_play_error': 'Failed to play the alarm sound. Try selecting the file again.',
     'alarm_file_too_large': 'File is too large. Maximum 2 MB on the web version.',
     'alarm_select_prayers': 'Select prayer times',
@@ -248,7 +248,7 @@ final Map<String, Map<String, String>> _translations = {
     'alarm_remove_file': '着信音を削除',
     'alarm_volume': 'アラーム音量',
     'alarm_test': 'サウンドをテスト',
-    'alarm_hint': '礼拝時間の横のアラームアイコンをタップすると ベル → バイブ → オフ と切り替わります。長押しで着信音と音量を設定できます。',
+    'alarm_hint': 'この着信音と音量はすべての礼拝に使われます。ベル/バイブ/オフは礼拝時間の横のアラームアイコンをタップして切り替えます。',
     'alarm_play_error': 'アラーム音の再生に失敗しました。ファイルを選び直してください。',
     'alarm_file_too_large': 'ファイルが大きすぎます。Web版では最大2MBです。',
     'alarm_select_prayers': '礼拝時間を選択',
@@ -302,7 +302,7 @@ final Map<String, Map<String, String>> _translations = {
     'alarm_remove_file': '删除铃声',
     'alarm_volume': '闹钟音量',
     'alarm_test': '测试声音',
-    'alarm_hint': '点击祷告时间旁的闹钟图标可切换：响铃 → 振动 → 关闭。长按图标可选择铃声和音量。',
+    'alarm_hint': '此铃声和音量适用于所有祷告。响铃/振动/关闭请点击祷告时间旁的闹钟图标切换。',
     'alarm_play_error': '播放闹钟声音失败，请重新选择文件。',
     'alarm_file_too_large': '文件过大。网页版最大为 2 MB。',
     'alarm_select_prayers': '选择祷告时间',
@@ -750,6 +750,10 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
   bool _showHijri = false;
   static const List<String> _prayerKeys = ['fajr', 'dhuhr', 'asr', 'maghrib', 'isha'];
   static const int _maxWebAlarmBytes = 2 * 1024 * 1024;
+  // Nada dering & volume berlaku untuk semua waktu sholat.
+  String? _alarmFileName;
+  String? _alarmFilePath;
+  Uint8List? _alarmFileBytes;
   final Map<String, _PrayerAlarmConfig> _alarmConfigs = {
     for (final k in _prayerKeys) k: _PrayerAlarmConfig(),
   };
@@ -782,50 +786,58 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
 
   void _loadSavedAlarmSettings() {
     final prefs = widget.prefs;
-    // Setelan lama (satu mode + satu nada untuk semua sholat) jadi nilai awal
-    // tiap waktu sholat, supaya pilihan user sebelumnya tidak hilang.
-    final legacyMode = prefs.getString('alarm_mode') ?? 'ring';
-    final legacyName = prefs.getString('custom_alarm_filename');
-    final legacyPath = prefs.getString('custom_alarm_path');
-    final legacyData = prefs.getString('custom_alarm_data');
-    final migrated = prefs.getBool('alarm_per_prayer_v1') ?? false;
 
-    if (!migrated) {
-      if (legacyName != null && legacyData != null) {
-        prefs.setString(_alarmSoundDataKey(legacyName), legacyData);
-      }
+    // Setelan versi lama (satu mode untuk semua sholat) jadi mode awal
+    // tiap waktu sholat, supaya pilihan user sebelumnya tidak hilang.
+    if (!(prefs.getBool('alarm_per_prayer_v1') ?? false)) {
+      final legacyMode = prefs.getString('alarm_mode') ?? 'ring';
       for (final k in _prayerKeys) {
         prefs.setString('alarm_mode_$k', legacyMode);
-        if (legacyName != null) {
-          prefs.setString('alarm_file_name_$k', legacyName);
-          if (legacyPath != null) prefs.setString('alarm_file_path_$k', legacyPath);
-        }
       }
-      prefs.remove('alarm_mode');
-      prefs.remove('custom_alarm_filename');
-      prefs.remove('custom_alarm_path');
-      prefs.remove('custom_alarm_data');
+      final legacyName = prefs.getString('custom_alarm_filename');
+      final legacyPath = prefs.getString('custom_alarm_path');
+      final legacyData = prefs.getString('custom_alarm_data');
+      if (legacyName != null) {
+        prefs.setString('alarm_file_name', legacyName);
+        if (legacyPath != null) prefs.setString('alarm_file_path', legacyPath);
+        if (legacyData != null) prefs.setString(_alarmSoundDataKey(legacyName), legacyData);
+      }
+      for (final key in ['alarm_mode', 'custom_alarm_filename', 'custom_alarm_path', 'custom_alarm_data']) {
+        prefs.remove(key);
+      }
       prefs.setBool('alarm_per_prayer_v1', true);
+    }
+    // Sempat ada nada per waktu sholat; sekarang satu nada untuk semua.
+    for (final k in _prayerKeys) {
+      final name = prefs.getString('alarm_file_name_$k');
+      final path = prefs.getString('alarm_file_path_$k');
+      if (name != null && prefs.getString('alarm_file_name') == null) {
+        prefs.setString('alarm_file_name', name);
+        if (path != null) prefs.setString('alarm_file_path', path);
+      }
+      prefs.remove('alarm_file_name_$k');
+      prefs.remove('alarm_file_path_$k');
     }
 
     for (final k in _prayerKeys) {
       final c = _alarmConfigs[k]!;
       c.enabled = prefs.getBool('alarm_$k') ?? true;
       c.mode = prefs.getString('alarm_mode_$k') ?? 'ring';
-      c.fileName = prefs.getString('alarm_file_name_$k');
-      c.filePath = prefs.getString('alarm_file_path_$k');
-      c.fileBytes = null;
-      if (kIsWeb) {
-        // Di web, path file tidak tersedia. Isi file disimpan sebagai base64.
-        c.filePath = null;
-        final data = c.fileName == null ? null : prefs.getString(_alarmSoundDataKey(c.fileName!));
-        if (data != null) {
-          try {
-            c.fileBytes = base64Decode(data);
-          } catch (_) {}
-        }
-        if (c.fileBytes == null) c.fileName = null;
+    }
+
+    _alarmFileName = prefs.getString('alarm_file_name');
+    _alarmFilePath = prefs.getString('alarm_file_path');
+    _alarmFileBytes = null;
+    if (kIsWeb) {
+      // Di web, path file tidak tersedia. Isi file disimpan sebagai base64.
+      _alarmFilePath = null;
+      final data = _alarmFileName == null ? null : prefs.getString(_alarmSoundDataKey(_alarmFileName!));
+      if (data != null) {
+        try {
+          _alarmFileBytes = base64Decode(data);
+        } catch (_) {}
       }
+      if (_alarmFileBytes == null) _alarmFileName = null;
     }
     _alarmVolume = prefs.getDouble('alarm_volume') ?? 1.0;
   }
@@ -838,29 +850,29 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
       final c = _alarmConfigs[k]!;
       prefs.setBool('alarm_$k', c.enabled);
       prefs.setString('alarm_mode_$k', c.mode);
-      if (c.fileName != null) {
-        prefs.setString('alarm_file_name_$k', c.fileName!);
-      } else {
-        prefs.remove('alarm_file_name_$k');
-      }
-      if (c.filePath != null) {
-        prefs.setString('alarm_file_path_$k', c.filePath!);
-      } else {
-        prefs.remove('alarm_file_path_$k');
-      }
+    }
+    if (_alarmFileName != null) {
+      prefs.setString('alarm_file_name', _alarmFileName!);
+    } else {
+      prefs.remove('alarm_file_name');
+    }
+    if (_alarmFilePath != null) {
+      prefs.setString('alarm_file_path', _alarmFilePath!);
+    } else {
+      prefs.remove('alarm_file_path');
     }
     prefs.setDouble('alarm_volume', _alarmVolume);
     if (kIsWeb) {
-      // Buang isi file yang sudah tidak dipakai waktu sholat mana pun.
-      final used = {for (final c in _alarmConfigs.values) if (c.fileName != null) _alarmSoundDataKey(c.fileName!)};
+      // Buang isi file lama yang sudah tidak dipakai.
+      final used = _alarmFileName == null ? null : _alarmSoundDataKey(_alarmFileName!);
       for (final key in prefs.getKeys().where((k) => k.startsWith('alarm_sound_data_')).toList()) {
-        if (!used.contains(key)) prefs.remove(key);
+        if (key != used) prefs.remove(key);
       }
     }
   }
 
-  /// Pilih file nada untuk satu waktu sholat. Mengembalikan true kalau berhasil.
-  Future<bool> _pickAlarmFile(String prayerKey) async {
+  /// Pilih file nada dering. Mengembalikan true kalau berhasil.
+  Future<bool> _pickAlarmFile() async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['mp3', 'wav', 'ogg', 'aac'],
@@ -887,21 +899,19 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
 
     if (!mounted) return false;
     setState(() {
-      final c = _alarmConfigs[prayerKey]!;
-      c.fileName = file.name;
-      c.filePath = file.path;
-      c.fileBytes = file.bytes;
+      _alarmFileName = file.name;
+      _alarmFilePath = file.path;
+      _alarmFileBytes = file.bytes;
     });
     _saveAlarmSettings();
     return true;
   }
 
-  void _clearAlarmFile(String prayerKey) {
+  void _clearAlarmFile() {
     setState(() {
-      final c = _alarmConfigs[prayerKey]!;
-      c.fileName = null;
-      c.filePath = null;
-      c.fileBytes = null;
+      _alarmFileName = null;
+      _alarmFilePath = null;
+      _alarmFileBytes = null;
     });
     _saveAlarmSettings();
   }
@@ -942,7 +952,7 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
     final c = _alarmConfigs[prayerKey]!;
     if (!c.enabled) return;
     if (c.mode == 'ring') {
-      await _previewAlarmSound(prayerKey);
+      await _previewAlarmSound();
     } else {
       // Satu getaran pendek gampang terlewat, jadi diulang beberapa kali.
       for (var i = 0; i < 6; i++) {
@@ -952,15 +962,14 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
     }
   }
 
-  Future<void> _previewAlarmSound(String prayerKey) async {
-    final c = _alarmConfigs[prayerKey]!;
+  Future<void> _previewAlarmSound() async {
     try {
       await _audioPlayer?.stop();
-      if (c.fileBytes != null) {
-        final uri = Uri.dataFromBytes(c.fileBytes!, mimeType: _guessAlarmMimeType(c.fileName));
+      if (_alarmFileBytes != null) {
+        final uri = Uri.dataFromBytes(_alarmFileBytes!, mimeType: _guessAlarmMimeType(_alarmFileName));
         await _audioPlayer?.setAudioSource(AudioSource.uri(uri));
-      } else if (c.filePath != null) {
-        await _audioPlayer?.setFilePath(c.filePath!);
+      } else if (_alarmFilePath != null) {
+        await _audioPlayer?.setFilePath(_alarmFilePath!);
       } else {
         // Belum pilih file: pakai nada bawaan biar alarm tetap bunyi.
         final uri = Uri.dataFromBytes(_defaultToneBytes, mimeType: 'audio/wav');
@@ -1509,7 +1518,7 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
     final c = _alarmConfigs[prayerKey]!;
     if (!c.enabled) return _t('alarm_off');
     if (c.mode == 'vibrate') return _t('alarm_mode_vibrate');
-    return '${_t('alarm_mode_ring')} · ${c.fileName ?? _t('alarm_default_tone')}';
+    return _t('alarm_mode_ring');
   }
 
   /// Kerangka dialog alarm (blur + slide up) yang dipakai dua dialog di bawah.
@@ -1595,7 +1604,8 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
     });
   }
 
-  /// Menu Alarm di bawah: cuma cara pakai dan volume.
+  /// Menu Alarm di bawah: nada dering & volume untuk semua waktu sholat.
+  /// Dering/Getar/Mati per sholat diatur dari ikon alarm di jadwal.
   void _openAlarmSettingsBottomSheet() {
     _showAlarmDialog(builder: (context, isDark, update) {
       return Column(
@@ -1607,61 +1617,15 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
             _t('alarm_hint'),
             style: TextStyle(color: isDark ? Colors.white70 : Colors.black54, fontSize: 13, height: 1.4),
           ),
-        ],
-      );
-    });
-  }
-
-  /// Tekan lama ikon alarm di jadwal: atur mode & nada untuk satu waktu sholat.
-  void _openPrayerAlarmSheet(String prayerKey) {
-    _showAlarmDialog(builder: (context, isDark, update) {
-      final c = _alarmConfigs[prayerKey]!;
-      final mode = c.enabled ? c.mode : 'off';
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(_t(prayerKey), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
           const SizedBox(height: 16),
-          _AnimatedSegmentedToggle<String>(
-            isDark: isDark,
-            value: mode,
-            options: [
-              _SegmentOption(value: 'ring', label: _t('alarm_mode_ring'), icon: Icons.alarm_on_rounded),
-              _SegmentOption(value: 'vibrate', label: _t('alarm_mode_vibrate'), icon: Icons.vibration_rounded),
-              _SegmentOption(value: 'off', label: _t('alarm_off'), icon: Icons.alarm_off_rounded),
-            ],
-            onChanged: (value) {
-              update(() {
-                c.enabled = value != 'off';
-                if (value != 'off') c.mode = value;
-              });
-              _saveAlarmSettings();
-              if (value == 'vibrate') HapticFeedback.vibrate();
-            },
-          ),
-          AnimatedSize(
-            duration: const Duration(milliseconds: 240),
-            curve: Curves.easeOutCubic,
-            alignment: Alignment.topCenter,
-            child: mode != 'ring'
-                ? const SizedBox(width: double.infinity)
-                : Padding(
-                    padding: const EdgeInsets.only(top: 12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _buildRingtoneCard(prayerKey: prayerKey, isDark: isDark, update: update),
-                        _buildAlarmVolumeControl(isDark: isDark, update: update),
-                      ],
-                    ),
-                  ),
-          ),
+          _buildRingtoneCard(isDark: isDark, update: update),
+          _buildAlarmVolumeControl(isDark: isDark, update: update),
         ],
       );
     });
   }
 
-  /// Volume alarm (satu untuk semua waktu sholat), tampil di bawah pilihan nada.
+  /// Volume alarm, tampil di bawah pilihan nada.
   Widget _buildAlarmVolumeControl({required bool isDark, required void Function(VoidCallback) update}) {
     final labelStyle = TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.bold);
     return Column(
@@ -1711,13 +1675,11 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
   /// Kartu nada dering: nama file dapat satu baris penuh, tombol aksi di bawahnya
   /// supaya teks tidak terjepit tombol.
   Widget _buildRingtoneCard({
-    required String prayerKey,
     required bool isDark,
     required void Function(VoidCallback) update,
   }) {
-    final c = _alarmConfigs[prayerKey]!;
     final primary = Theme.of(context).colorScheme.primary;
-    final hasFile = c.fileName != null;
+    final hasFile = _alarmFileName != null;
     final buttonStyle = OutlinedButton.styleFrom(
       foregroundColor: isDark ? Colors.white : Colors.black87,
       side: BorderSide(color: isDark ? Colors.white24 : Colors.black12),
@@ -1757,7 +1719,7 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      c.fileName ?? _t('alarm_default_tone'),
+                      _alarmFileName ?? _t('alarm_default_tone'),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
@@ -1780,7 +1742,7 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
                   tooltip: _t('alarm_remove_file'),
                   color: isDark ? Colors.white54 : Colors.black45,
                   visualDensity: VisualDensity.compact,
-                  onPressed: () => update(() => _clearAlarmFile(prayerKey)),
+                  onPressed: () => update(_clearAlarmFile),
                 ),
             ],
           ),
@@ -1797,7 +1759,7 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
                     overflow: TextOverflow.ellipsis,
                   ),
                   onPressed: () async {
-                    await _pickAlarmFile(prayerKey);
+                    await _pickAlarmFile();
                     update(() {});
                   },
                 ),
@@ -1810,7 +1772,7 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
                   label: Text(_t('alarm_test'), maxLines: 1, overflow: TextOverflow.ellipsis),
                   onPressed: () {
                     _isPreviewingAlarm = true;
-                    _previewAlarmSound(prayerKey);
+                    _previewAlarmSound();
                   },
                 ),
               ),
@@ -2417,10 +2379,6 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
                   InkWell(
                     borderRadius: BorderRadius.circular(12),
                     onTap: () => _cyclePrayerAlarm(prayerKey),
-                    onLongPress: () {
-                      HapticFeedback.selectionClick();
-                      _openPrayerAlarmSheet(prayerKey);
-                    },
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 220),
                       curve: Curves.easeOut,
@@ -2645,9 +2603,6 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
 class _PrayerAlarmConfig {
   bool enabled = true;
   String mode = 'ring'; // 'ring' atau 'vibrate'
-  String? fileName;
-  String? filePath;
-  Uint8List? fileBytes;
 }
 
 class _SegmentOption<T> {
