@@ -14,16 +14,54 @@ import 'package:just_audio/just_audio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Nada alarm bawaan: chime 2 nada lembut (WAV 16-bit mono), dibuat di kode
-/// supaya tidak perlu file aset.
+/// Nada alarm bawaan "Pagi lembut": melodi pagi pelan dengan pad halus
+/// (WAV 16-bit mono), dibuat di kode supaya tidak perlu file aset.
 Uint8List _buildDefaultToneWav() {
   const sampleRate = 22050;
-  const noteSeconds = 0.55;
-  const notes = [880.0, 659.25, 880.0, 659.25]; // A5 - E5, diulang 2x
-  final samplesPerNote = (sampleRate * noteSeconds).round();
-  final totalSamples = samplesPerNote * notes.length;
-  final data = ByteData(44 + totalSamples * 2);
+  const beat = 0.34;
+  const total = 34 * beat + 2.5;
+  // (ketukan, nada MIDI) - melodi orisinal, D mayor pentatonik
+  const melody = [
+    [0, 74], [1, 78], [2, 81], [4, 83], [5, 81], [6, 78], [8, 76], [9, 78],
+    [10, 81], [11, 86], [14, 83], [16, 74], [17, 78], [18, 81], [20, 83],
+    [21, 86], [22, 88], [24, 86], [25, 83], [26, 81], [28, 78], [29, 76], [30, 74],
+  ];
+  final n = (sampleRate * total).round();
+  final out = List<double>.filled(n, 0);
 
+  for (final note in melody) {
+    final f = 440 * math.pow(2, (note[1] - 7 - 69) / 12);
+    final start = (note[0] * beat * sampleRate).round();
+    final vel = 0.45 * (0.7 + 0.3 * math.min(1, note[0] / 24));
+    final end = math.min(n, start + 3 * sampleRate);
+    for (var k = start; k < end; k++) {
+      final t = (k - start) / sampleRate;
+      // palu empuk: attack pelan, hampir tanpa harmonik tinggi
+      out[k] += vel *
+          (math.sin(2 * math.pi * f * t) + 0.12 * math.sin(4 * math.pi * f * t) * math.exp(-t / 0.3)) *
+          math.exp(-t / 0.9) *
+          math.min(1, t / 0.035);
+    }
+  }
+  for (var k = 0; k < n; k++) {
+    final t = k / sampleRate;
+    final e = math.pow(math.sin(math.pi * t / total), 2);
+    out[k] += 0.10 * e *
+        (math.sin(2 * math.pi * 196.0 * t) + math.sin(2 * math.pi * 246.94 * t) + math.sin(2 * math.pi * 293.66 * t));
+  }
+  for (final tap in const [[0.11, 0.24], [0.19, 0.2], [0.31, 0.16], [0.47, 0.12]]) {
+    final d = (tap[0] * sampleRate).round();
+    for (var k = d; k < n; k++) {
+      out[k] += tap[1] * out[k - d];
+    }
+  }
+  var peak = 1e-9;
+  for (var k = 0; k < n; k++) {
+    out[k] *= math.min(1, (total - k / sampleRate) / 1.2);
+    peak = math.max(peak, out[k].abs());
+  }
+
+  final data = ByteData(44 + n * 2);
   void writeStr(int offset, String v) {
     for (var i = 0; i < v.length; i++) {
       data.setUint8(offset + i, v.codeUnitAt(i));
@@ -31,7 +69,7 @@ Uint8List _buildDefaultToneWav() {
   }
 
   writeStr(0, 'RIFF');
-  data.setUint32(4, 36 + totalSamples * 2, Endian.little);
+  data.setUint32(4, 36 + n * 2, Endian.little);
   writeStr(8, 'WAVE');
   writeStr(12, 'fmt ');
   data.setUint32(16, 16, Endian.little);
@@ -42,19 +80,9 @@ Uint8List _buildDefaultToneWav() {
   data.setUint16(32, 2, Endian.little);
   data.setUint16(34, 16, Endian.little);
   writeStr(36, 'data');
-  data.setUint32(40, totalSamples * 2, Endian.little);
-
-  var offset = 44;
-  for (final freq in notes) {
-    for (var n = 0; n < samplesPerNote; n++) {
-      final t = n / sampleRate;
-      final attack = math.min(1.0, t / 0.01);
-      final decay = math.exp(-4.0 * t);
-      final wave = math.sin(2 * math.pi * freq * t) + 0.3 * math.sin(4 * math.pi * freq * t);
-      final sample = (wave / 1.3 * attack * decay * 0.6 * 32767).round();
-      data.setInt16(offset, sample, Endian.little);
-      offset += 2;
-    }
+  data.setUint32(40, n * 2, Endian.little);
+  for (var k = 0; k < n; k++) {
+    data.setInt16(44 + k * 2, (out[k] / peak * 0.7 * 32767).round(), Endian.little);
   }
   return data.buffer.asUint8List();
 }
