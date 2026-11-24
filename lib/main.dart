@@ -1611,6 +1611,8 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
                                     setState(() {
                                       _alarmVolume = value;
                                     });
+                                    // Volume langsung ikut berubah kalau tes suara lagi bunyi.
+                                    _audioPlayer?.setVolume(value);
                                   },
                                   onChangeEnd: (value) {
                                     _saveAlarmSettings();
