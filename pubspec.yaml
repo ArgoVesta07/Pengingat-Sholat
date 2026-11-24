@@ -19,7 +19,7 @@ dependencies:
   http: ^1.6.0
   shared_preferences: ^2.2.2
   just_audio: ^0.9.35
-  file_picker: ^5.2.7
+  file_picker: ^10.3.10
 
 dev_dependencies:
   flutter_test:

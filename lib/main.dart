@@ -68,6 +68,7 @@ final Map<String, Map<String, String>> _translations = {
     'alarm_test': 'Tes Suara',
     'alarm_hint': 'Ketuk ikon alarm di samping waktu sholat untuk aktifkan/matikan.',
     'alarm_play_error': 'Gagal memutar suara alarm. Coba pilih ulang file-nya.',
+    'alarm_file_too_large': 'File terlalu besar. Maksimal 2 MB untuk versi web.',
     'alarm_select_prayers': 'Pilih waktu sholat',
     'ui_size': 'Ukuran UI',
     'ui_size_preview': 'Pratinjau Tampilan',
@@ -119,6 +120,7 @@ final Map<String, Map<String, String>> _translations = {
     'alarm_test': 'Test Sound',
     'alarm_hint': 'Tap the alarm icon beside each prayer time to toggle it on/off.',
     'alarm_play_error': 'Failed to play the alarm sound. Try selecting the file again.',
+    'alarm_file_too_large': 'File is too large. Maximum 2 MB on the web version.',
     'alarm_select_prayers': 'Select prayer times',
     'ui_size_preview': 'Live Preview',
   },
@@ -168,6 +170,7 @@ final Map<String, Map<String, String>> _translations = {
     'alarm_test': 'サウンドをテスト',
     'alarm_hint': '各礼拝時間の横にあるアラームアイコンをタップしてオン/オフを切り替えます。',
     'alarm_play_error': 'アラーム音の再生に失敗しました。ファイルを選び直してください。',
+    'alarm_file_too_large': 'ファイルが大きすぎます。Web版では最大2MBです。',
     'alarm_select_prayers': '礼拝時間を選択',
     'ui_size': 'UIサイズ',
     'ui_size_preview': 'リアルタイムプレビュー',
@@ -218,6 +221,7 @@ final Map<String, Map<String, String>> _translations = {
     'alarm_test': '测试声音',
     'alarm_hint': '点击祷告时间旁边的闹钟图标可打开/关闭提醒。',
     'alarm_play_error': '播放闹钟声音失败，请重新选择文件。',
+    'alarm_file_too_large': '文件过大。网页版最大为 2 MB。',
     'alarm_select_prayers': '选择祷告时间',
     'ui_size': 'UI 大小',
     'ui_size_preview': '实时预览',
@@ -663,6 +667,8 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
   String? _customAlarmPath;
   String? _customAlarmFileName;
   Uint8List? _customAlarmBytes;
+  static const String _customAlarmDataKey = 'custom_alarm_data';
+  static const int _maxWebAlarmBytes = 2 * 1024 * 1024;
   double _alarmVolume = 1.0;
   int _uiScalePercentage = 50;
   Set<String> _alarmPrayerTimes = {'fajr', 'dhuhr', 'asr', 'maghrib', 'isha'};
@@ -693,8 +699,19 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
     _customAlarmPath = widget.prefs.getString('custom_alarm_path');
     _customAlarmFileName = widget.prefs.getString('custom_alarm_filename');
     if (kIsWeb) {
-      _customAlarmFileName = null;
+      // Di web, path file tidak tersedia. Isi file disimpan sebagai base64.
       _customAlarmPath = null;
+      final savedData = widget.prefs.getString(_customAlarmDataKey);
+      if (savedData != null && _customAlarmFileName != null) {
+        try {
+          _customAlarmBytes = base64Decode(savedData);
+        } catch (_) {
+          _customAlarmBytes = null;
+        }
+      }
+      if (_customAlarmBytes == null) {
+        _customAlarmFileName = null;
+      }
     }
     _alarmVolume = widget.prefs.getDouble('alarm_volume') ?? 1.0;
     _alarmPrayerTimes = {
@@ -1432,6 +1449,7 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
                                           });
                                           widget.prefs.remove('custom_alarm_filename');
                                           widget.prefs.remove('custom_alarm_path');
+                                          widget.prefs.remove(_customAlarmDataKey);
                                         },
                                       ),
                                     TextButton.icon(
@@ -1448,6 +1466,22 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
                                         );
                                         if (result == null || result.files.isEmpty) return;
                                         final file = result.files.single;
+
+                                        if (kIsWeb) {
+                                          final bytes = file.bytes;
+                                          if (bytes == null) return;
+                                          if (bytes.length > _maxWebAlarmBytes) {
+                                            _showSnackBar(_t('alarm_file_too_large'));
+                                            return;
+                                          }
+                                          try {
+                                            await widget.prefs.setString(_customAlarmDataKey, base64Encode(bytes));
+                                          } catch (e) {
+                                            debugPrint('Failed to save alarm file: $e');
+                                            _showSnackBar(_t('alarm_file_too_large'));
+                                            return;
+                                          }
+                                        }
 
                                         setDialogState(() {
                                           localAlarmFileName = file.name;
@@ -2586,7 +2620,9 @@ class _CitySearchDialogState extends State<_CitySearchDialog> {
       final response = await http.get(
         url,
         headers: {
-          'User-Agent': 'PrayTimeApp/1.0 (contact@yourdomain.com)',
+          // Browser tidak mengizinkan User-Agent diubah; di web Nominatim
+          // memakai header Referer yang dikirim otomatis oleh browser.
+          if (!kIsWeb) 'User-Agent': 'PrayTime/1.0 (+https://praytime-minimal.vercel.app)',
           'Accept-Language': widget.currentLanguageCode ?? 'id',
         },
       ).timeout(const Duration(seconds: 5));
