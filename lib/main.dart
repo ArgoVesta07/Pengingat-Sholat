@@ -131,7 +131,7 @@ final Map<String, Map<String, String>> _translations = {
     'alarm_enabled': 'Alarm aktif',
     'alarm_mode_ring': 'Berdering',
     'alarm_mode_vibrate': 'Getar',
-    'alarm_custom_pick': 'Import suara MP3/WAV',
+    'alarm_custom_pick': 'Pilih file',
     'alarm_selected_file': 'File terpilih',
     'alarm_current_ringtone': 'Nada Dering Saat Ini',
     'alarm_no_file_selected': 'Belum ada file dipilih',
@@ -140,10 +140,12 @@ final Map<String, Map<String, String>> _translations = {
     'alarm_remove_file': 'Hapus nada dering',
     'alarm_volume': 'Volume Alarm',
     'alarm_test': 'Tes Suara',
-    'alarm_hint': 'Ketuk ikon alarm di samping waktu sholat untuk aktifkan/matikan.',
+    'alarm_hint': 'Atur tiap waktu sholat: berdering atau getar, dan nada deringnya. Ketuk ikon alarm di jadwal untuk aktifkan/matikan cepat.',
     'alarm_play_error': 'Gagal memutar suara alarm. Coba pilih ulang file-nya.',
     'alarm_file_too_large': 'File terlalu besar. Maksimal 2 MB untuk versi web.',
     'alarm_select_prayers': 'Pilih waktu sholat',
+    'alarm_off': 'Mati',
+    'alarm_builtin_desc': 'Bawaan aplikasi',
     'ui_size': 'Ukuran UI',
     'ui_size_preview': 'Pratinjau Tampilan',
   },
@@ -184,7 +186,7 @@ final Map<String, Map<String, String>> _translations = {
     'alarm_enabled': 'Alarm enabled',
     'alarm_mode_ring': 'Ring',
     'alarm_mode_vibrate': 'Vibrate',
-    'alarm_custom_pick': 'Import MP3/WAV file',
+    'alarm_custom_pick': 'Choose file',
     'alarm_selected_file': 'Selected file',
     'alarm_current_ringtone': 'Current Ringtone',
     'alarm_no_file_selected': 'No file selected',
@@ -193,10 +195,12 @@ final Map<String, Map<String, String>> _translations = {
     'alarm_remove_file': 'Remove ringtone',
     'alarm_volume': 'Alarm Volume',
     'alarm_test': 'Test Sound',
-    'alarm_hint': 'Tap the alarm icon beside each prayer time to toggle it on/off.',
+    'alarm_hint': 'Set each prayer separately: ring or vibrate, and its ringtone. Tap the alarm icon on the schedule to turn it on/off quickly.',
     'alarm_play_error': 'Failed to play the alarm sound. Try selecting the file again.',
     'alarm_file_too_large': 'File is too large. Maximum 2 MB on the web version.',
     'alarm_select_prayers': 'Select prayer times',
+    'alarm_off': 'Off',
+    'alarm_builtin_desc': 'Built into the app',
     'ui_size_preview': 'Live Preview',
   },
   'ja': {
@@ -235,7 +239,7 @@ final Map<String, Map<String, String>> _translations = {
     'alarm_enabled': 'アラームを有効にする',
     'alarm_mode_ring': 'ベル',
     'alarm_mode_vibrate': 'バイブ',
-    'alarm_custom_pick': 'MP3/WAVを選択',
+    'alarm_custom_pick': 'ファイルを選択',
     'alarm_selected_file': '選択されたファイル',
     'alarm_current_ringtone': '現在の着信音',
     'alarm_no_file_selected': 'ファイルが選択されていません',
@@ -244,10 +248,12 @@ final Map<String, Map<String, String>> _translations = {
     'alarm_remove_file': '着信音を削除',
     'alarm_volume': 'アラーム音量',
     'alarm_test': 'サウンドをテスト',
-    'alarm_hint': '各礼拝時間の横にあるアラームアイコンをタップしてオン/オフを切り替えます。',
+    'alarm_hint': '礼拝時間ごとにベルかバイブ、着信音を設定できます。スケジュールのアラームアイコンをタップすると素早くオン/オフできます。',
     'alarm_play_error': 'アラーム音の再生に失敗しました。ファイルを選び直してください。',
     'alarm_file_too_large': 'ファイルが大きすぎます。Web版では最大2MBです。',
     'alarm_select_prayers': '礼拝時間を選択',
+    'alarm_off': 'オフ',
+    'alarm_builtin_desc': 'アプリ内蔵',
     'ui_size': 'UIサイズ',
     'ui_size_preview': 'リアルタイムプレビュー',
   },
@@ -287,7 +293,7 @@ final Map<String, Map<String, String>> _translations = {
     'alarm_enabled': '启用闹钟',
     'alarm_mode_ring': '响铃',
     'alarm_mode_vibrate': '振动',
-    'alarm_custom_pick': '导入 MP3/WAV 文件',
+    'alarm_custom_pick': '选择文件',
     'alarm_selected_file': '已选择文件',
     'alarm_current_ringtone': '当前铃声',
     'alarm_no_file_selected': '尚未选择文件',
@@ -296,10 +302,12 @@ final Map<String, Map<String, String>> _translations = {
     'alarm_remove_file': '删除铃声',
     'alarm_volume': '闹钟音量',
     'alarm_test': '测试声音',
-    'alarm_hint': '点击祷告时间旁边的闹钟图标可打开/关闭提醒。',
+    'alarm_hint': '可为每个祷告时间分别设置响铃或振动以及铃声。点击日程中的闹钟图标可快速开关。',
     'alarm_play_error': '播放闹钟声音失败，请重新选择文件。',
     'alarm_file_too_large': '文件过大。网页版最大为 2 MB。',
     'alarm_select_prayers': '选择祷告时间',
+    'alarm_off': '关闭',
+    'alarm_builtin_desc': '应用内置',
     'ui_size': 'UI 大小',
     'ui_size_preview': '实时预览',
   },
@@ -740,15 +748,13 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
   final ValueNotifier<String> _highlightedPrayerKeyNotifier = ValueNotifier('fajr');
   bool _isLoadingGps = false;
   bool _showHijri = false;
-  String _alarmMode = 'ring';
-  String? _customAlarmPath;
-  String? _customAlarmFileName;
-  Uint8List? _customAlarmBytes;
-  static const String _customAlarmDataKey = 'custom_alarm_data';
+  static const List<String> _prayerKeys = ['fajr', 'dhuhr', 'asr', 'maghrib', 'isha'];
   static const int _maxWebAlarmBytes = 2 * 1024 * 1024;
+  final Map<String, _PrayerAlarmConfig> _alarmConfigs = {
+    for (final k in _prayerKeys) k: _PrayerAlarmConfig(),
+  };
   double _alarmVolume = 1.0;
   int _uiScalePercentage = 50;
-  Set<String> _alarmPrayerTimes = {'fajr', 'dhuhr', 'asr', 'maghrib', 'isha'};
   AudioPlayer? _audioPlayer;
   DateTime? _lastAlarmPlayedAt;
   DateTime? _lastAlarmCheckAt;
@@ -775,48 +781,129 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
   }
 
   void _loadSavedAlarmSettings() {
-    _alarmMode = widget.prefs.getString('alarm_mode') ?? 'ring';
-    _customAlarmPath = widget.prefs.getString('custom_alarm_path');
-    _customAlarmFileName = widget.prefs.getString('custom_alarm_filename');
-    if (kIsWeb) {
-      // Di web, path file tidak tersedia. Isi file disimpan sebagai base64.
-      _customAlarmPath = null;
-      final savedData = widget.prefs.getString(_customAlarmDataKey);
-      if (savedData != null && _customAlarmFileName != null) {
-        try {
-          _customAlarmBytes = base64Decode(savedData);
-        } catch (_) {
-          _customAlarmBytes = null;
+    final prefs = widget.prefs;
+    // Setelan lama (satu mode + satu nada untuk semua sholat) jadi nilai awal
+    // tiap waktu sholat, supaya pilihan user sebelumnya tidak hilang.
+    final legacyMode = prefs.getString('alarm_mode') ?? 'ring';
+    final legacyName = prefs.getString('custom_alarm_filename');
+    final legacyPath = prefs.getString('custom_alarm_path');
+    final legacyData = prefs.getString('custom_alarm_data');
+    final migrated = prefs.getBool('alarm_per_prayer_v1') ?? false;
+
+    if (!migrated) {
+      if (legacyName != null && legacyData != null) {
+        prefs.setString(_alarmSoundDataKey(legacyName), legacyData);
+      }
+      for (final k in _prayerKeys) {
+        prefs.setString('alarm_mode_$k', legacyMode);
+        if (legacyName != null) {
+          prefs.setString('alarm_file_name_$k', legacyName);
+          if (legacyPath != null) prefs.setString('alarm_file_path_$k', legacyPath);
         }
       }
-      if (_customAlarmBytes == null) {
-        _customAlarmFileName = null;
+      prefs.remove('alarm_mode');
+      prefs.remove('custom_alarm_filename');
+      prefs.remove('custom_alarm_path');
+      prefs.remove('custom_alarm_data');
+      prefs.setBool('alarm_per_prayer_v1', true);
+    }
+
+    for (final k in _prayerKeys) {
+      final c = _alarmConfigs[k]!;
+      c.enabled = prefs.getBool('alarm_$k') ?? true;
+      c.mode = prefs.getString('alarm_mode_$k') ?? 'ring';
+      c.fileName = prefs.getString('alarm_file_name_$k');
+      c.filePath = prefs.getString('alarm_file_path_$k');
+      c.fileBytes = null;
+      if (kIsWeb) {
+        // Di web, path file tidak tersedia. Isi file disimpan sebagai base64.
+        c.filePath = null;
+        final data = c.fileName == null ? null : prefs.getString(_alarmSoundDataKey(c.fileName!));
+        if (data != null) {
+          try {
+            c.fileBytes = base64Decode(data);
+          } catch (_) {}
+        }
+        if (c.fileBytes == null) c.fileName = null;
       }
     }
-    _alarmVolume = widget.prefs.getDouble('alarm_volume') ?? 1.0;
-    _alarmPrayerTimes = {
-      if (widget.prefs.getBool('alarm_fajr') ?? true) 'fajr',
-      if (widget.prefs.getBool('alarm_dhuhr') ?? true) 'dhuhr',
-      if (widget.prefs.getBool('alarm_asr') ?? true) 'asr',
-      if (widget.prefs.getBool('alarm_maghrib') ?? true) 'maghrib',
-      if (widget.prefs.getBool('alarm_isha') ?? true) 'isha',
-    };
+    _alarmVolume = prefs.getDouble('alarm_volume') ?? 1.0;
   }
 
+  static String _alarmSoundDataKey(String fileName) => 'alarm_sound_data_$fileName';
+
   void _saveAlarmSettings() {
-    widget.prefs.setString('alarm_mode', _alarmMode);
-    if (_customAlarmPath != null) {
-      widget.prefs.setString('custom_alarm_path', _customAlarmPath!);
+    final prefs = widget.prefs;
+    for (final k in _prayerKeys) {
+      final c = _alarmConfigs[k]!;
+      prefs.setBool('alarm_$k', c.enabled);
+      prefs.setString('alarm_mode_$k', c.mode);
+      if (c.fileName != null) {
+        prefs.setString('alarm_file_name_$k', c.fileName!);
+      } else {
+        prefs.remove('alarm_file_name_$k');
+      }
+      if (c.filePath != null) {
+        prefs.setString('alarm_file_path_$k', c.filePath!);
+      } else {
+        prefs.remove('alarm_file_path_$k');
+      }
     }
-    if (_customAlarmFileName != null) {
-      widget.prefs.setString('custom_alarm_filename', _customAlarmFileName!);
+    prefs.setDouble('alarm_volume', _alarmVolume);
+    if (kIsWeb) {
+      // Buang isi file yang sudah tidak dipakai waktu sholat mana pun.
+      final used = {for (final c in _alarmConfigs.values) if (c.fileName != null) _alarmSoundDataKey(c.fileName!)};
+      for (final key in prefs.getKeys().where((k) => k.startsWith('alarm_sound_data_')).toList()) {
+        if (!used.contains(key)) prefs.remove(key);
+      }
     }
-    widget.prefs.setDouble('alarm_volume', _alarmVolume);
-    widget.prefs.setBool('alarm_fajr', _alarmPrayerTimes.contains('fajr'));
-    widget.prefs.setBool('alarm_dhuhr', _alarmPrayerTimes.contains('dhuhr'));
-    widget.prefs.setBool('alarm_asr', _alarmPrayerTimes.contains('asr'));
-    widget.prefs.setBool('alarm_maghrib', _alarmPrayerTimes.contains('maghrib'));
-    widget.prefs.setBool('alarm_isha', _alarmPrayerTimes.contains('isha'));
+  }
+
+  /// Pilih file nada untuk satu waktu sholat. Mengembalikan true kalau berhasil.
+  Future<bool> _pickAlarmFile(String prayerKey) async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['mp3', 'wav', 'ogg', 'aac'],
+      withData: kIsWeb,
+    );
+    if (result == null || result.files.isEmpty) return false;
+    final file = result.files.single;
+
+    if (kIsWeb) {
+      final bytes = file.bytes;
+      if (bytes == null) return false;
+      if (bytes.length > _maxWebAlarmBytes) {
+        _showSnackBar(_t('alarm_file_too_large'));
+        return false;
+      }
+      try {
+        await widget.prefs.setString(_alarmSoundDataKey(file.name), base64Encode(bytes));
+      } catch (e) {
+        debugPrint('Failed to save alarm file: $e');
+        _showSnackBar(_t('alarm_file_too_large'));
+        return false;
+      }
+    }
+
+    if (!mounted) return false;
+    setState(() {
+      final c = _alarmConfigs[prayerKey]!;
+      c.fileName = file.name;
+      c.filePath = file.path;
+      c.fileBytes = file.bytes;
+    });
+    _saveAlarmSettings();
+    return true;
+  }
+
+  void _clearAlarmFile(String prayerKey) {
+    setState(() {
+      final c = _alarmConfigs[prayerKey]!;
+      c.fileName = null;
+      c.filePath = null;
+      c.fileBytes = null;
+    });
+    _saveAlarmSettings();
   }
 
   void _loadSavedUiScale() {
@@ -851,26 +938,29 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
     }
   }
 
-  Future<void> _playAlarmSound() async {
-    if (_alarmPrayerTimes.isEmpty) return;
-    if (_alarmMode == 'ring') {
-      await _previewAlarmSound();
-    } else if (_alarmMode == 'vibrate') {
-      HapticFeedback.vibrate();
+  Future<void> _playAlarmSound(String prayerKey) async {
+    final c = _alarmConfigs[prayerKey]!;
+    if (!c.enabled) return;
+    if (c.mode == 'ring') {
+      await _previewAlarmSound(prayerKey);
+    } else {
+      // Satu getaran pendek gampang terlewat, jadi diulang beberapa kali.
+      for (var i = 0; i < 6; i++) {
+        HapticFeedback.vibrate();
+        await Future<void>.delayed(const Duration(milliseconds: 700));
+      }
     }
   }
 
-  Future<void> _previewAlarmSound() async {
+  Future<void> _previewAlarmSound(String prayerKey) async {
+    final c = _alarmConfigs[prayerKey]!;
     try {
       await _audioPlayer?.stop();
-      if (_customAlarmBytes != null) {
-        final uri = Uri.dataFromBytes(
-          _customAlarmBytes!,
-          mimeType: _guessAlarmMimeType(_customAlarmFileName),
-        );
+      if (c.fileBytes != null) {
+        final uri = Uri.dataFromBytes(c.fileBytes!, mimeType: _guessAlarmMimeType(c.fileName));
         await _audioPlayer?.setAudioSource(AudioSource.uri(uri));
-      } else if (_customAlarmPath != null) {
-        await _audioPlayer?.setFilePath(_customAlarmPath!);
+      } else if (c.filePath != null) {
+        await _audioPlayer?.setFilePath(c.filePath!);
       } else {
         // Belum pilih file: pakai nada bawaan biar alarm tetap bunyi.
         final uri = Uri.dataFromBytes(_defaultToneBytes, mimeType: 'audio/wav');
@@ -885,7 +975,7 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
   }
 
   void _maybePlayPrayerAlarm(DateTime now) {
-    if (_alarmPrayerTimes.isEmpty) {
+    if (!_alarmConfigs.values.any((c) => c.enabled)) {
       _lastAlarmCheckAt = now;
       return;
     }
@@ -905,14 +995,14 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
     _lastAlarmCheckAt = now;
 
     for (final entry in prayerTimes.entries) {
-      if (!_alarmPrayerTimes.contains(entry.key)) continue;
+      if (!_alarmConfigs[entry.key]!.enabled) continue;
       final target = entry.value;
       final crossed = target.isAfter(lastCheck) && !target.isAfter(now);
       final stillFresh = now.difference(target) <= const Duration(minutes: 5);
       if (crossed && stillFresh) {
         if (_lastAlarmPlayedAt == null || now.difference(_lastAlarmPlayedAt!).inSeconds >= 60) {
           _isPreviewingAlarm = false;
-          _playAlarmSound();
+          _playAlarmSound(entry.key);
           _lastAlarmPlayedAt = now;
         }
       }
@@ -1402,28 +1492,36 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
       transitionDuration: const Duration(milliseconds: 250),
       pageBuilder: (context, anim1, anim2) {
         final isDark = Theme.of(context).brightness == Brightness.dark;
-        String localAlarmMode = _alarmMode;
-        String? localAlarmFileName = _customAlarmFileName;
-        double localVolume = _alarmVolume;
+        String? expandedKey;
 
         return BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
           child: Align(
-            alignment: Alignment(0, 0.75),
+            alignment: const Alignment(0, 0.75),
             child: Material(
               color: Colors.transparent,
               child: StatefulBuilder(
                 builder: (context, setDialogState) {
+                  // Ubah state layar utama sekaligus isi dialog.
+                  void update(VoidCallback fn) {
+                    setState(fn);
+                    setDialogState(() {});
+                  }
+
+                  final labelStyle = TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.bold);
+
                   return Container(
                     width: MediaQuery.of(context).size.width * 0.9,
-                    constraints: const BoxConstraints(maxWidth: 420),
+                    constraints: BoxConstraints(
+                      maxWidth: 420,
+                      maxHeight: MediaQuery.of(context).size.height * 0.85,
+                    ),
                     padding: const EdgeInsets.all(24.0),
                     decoration: BoxDecoration(
                       color: isDark ? const Color(0xFF2C2C2E).withAlpha((0.95 * 255).round()) : Colors.white,
                       borderRadius: BorderRadius.circular(16),
                     ),
-                    child: SingleChildScrollView(
-                      child: Column(
+                    child: Column(
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -1436,230 +1534,67 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
                           _t('alarm_hint'),
                           style: TextStyle(color: isDark ? Colors.white70 : Colors.black54, fontSize: 13),
                         ),
-                        const SizedBox(height: 18),
-                        _AnimatedSegmentedToggle<String>(
-                          isDark: isDark,
-                          value: localAlarmMode,
-                          options: [
-                            _SegmentOption(value: 'ring', label: _t('alarm_mode_ring'), icon: Icons.notifications_active_rounded),
-                            _SegmentOption(value: 'vibrate', label: _t('alarm_mode_vibrate'), icon: Icons.vibration_rounded),
-                          ],
-                          onChanged: (value) {
-                            setDialogState(() {
-                              localAlarmMode = value;
-                            });
-                            setState(() {
-                              _alarmMode = value;
-                            });
-                            _saveAlarmSettings();
-                          },
-                        ),
-                        const SizedBox(height: 18),
-                        AnimatedSize(
-                          duration: const Duration(milliseconds: 260),
-                          curve: Curves.easeOutCubic,
-                          alignment: Alignment.topCenter,
-                          child: AnimatedSwitcher(
-                            duration: const Duration(milliseconds: 200),
-                            switchInCurve: Curves.easeOut,
-                            switchOutCurve: Curves.easeIn,
-                            transitionBuilder: (child, anim) => FadeTransition(
-                              opacity: anim,
-                              child: SizeTransition(
-                                sizeFactor: anim,
-                                axisAlignment: -1,
-                                child: child,
-                              ),
-                            ),
-                            child: localAlarmMode != 'ring'
-                                ? const SizedBox(key: ValueKey('no_ring_options'))
-                                : Column(
-                                    key: const ValueKey('ring_options'),
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                          Text(
-                            _t('alarm_current_ringtone'),
-                            style: TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.bold),
-                          ),
-                          const SizedBox(height: 8),
-                          Container(
-                            decoration: BoxDecoration(
-                              color: isDark ? const Color(0xFF1B1B1D) : const Color(0xFFF5F5F7),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                color: localAlarmFileName != null
-                                    ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.4)
-                                    : (isDark ? Colors.white12 : Colors.black12),
-                              ),
-                            ),
-                            child: Material(
-                              color: Colors.transparent,
-                              borderRadius: BorderRadius.circular(12),
-                              clipBehavior: Clip.antiAlias,
-                              child: ListTile(
-                                leading: Icon(
-                                  localAlarmFileName != null ? Icons.music_note_rounded : Icons.music_off_rounded,
-                                  color: localAlarmFileName != null
-                                      ? Theme.of(context).colorScheme.primary
-                                      : (isDark ? Colors.white38 : Colors.black38),
-                                ),
-                                title: Text(
-                                  localAlarmFileName ?? _t('alarm_default_tone'),
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 13,
-                                    color: localAlarmFileName != null
-                                        ? (isDark ? Colors.white : Colors.black87)
-                                        : (isDark ? Colors.white54 : Colors.black45),
+                        const SizedBox(height: 16),
+                        Flexible(
+                          child: SingleChildScrollView(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                for (final key in _prayerKeys) ...[
+                                  _buildPrayerAlarmTile(
+                                    prayerKey: key,
+                                    isDark: isDark,
+                                    expanded: expandedKey == key,
+                                    onToggleExpanded: () => setDialogState(() {
+                                      expandedKey = expandedKey == key ? null : key;
+                                    }),
+                                    update: update,
                                   ),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                subtitle: localAlarmFileName != null
-                                    ? Text(
-                                        _t('alarm_selected_file'),
-                                        style: TextStyle(color: isDark ? Colors.white54 : Colors.black54, fontSize: 11),
-                                      )
-                                    : null,
-                                trailing: Row(
-                                  mainAxisSize: MainAxisSize.min,
+                                  const SizedBox(height: 8),
+                                ],
+                                const SizedBox(height: 10),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                   children: [
-                                    if (localAlarmFileName != null)
-                                      IconButton(
-                                        icon: const Icon(Icons.close_rounded, size: 18),
-                                        tooltip: _t('alarm_remove_file'),
-                                        color: isDark ? Colors.white54 : Colors.black45,
-                                        constraints: const BoxConstraints(),
-                                        padding: const EdgeInsets.all(6),
-                                        onPressed: () {
-                                          setDialogState(() {
-                                            localAlarmFileName = null;
-                                          });
-                                          if (!mounted) return;
-                                          setState(() {
-                                            _customAlarmFileName = null;
-                                            _customAlarmPath = null;
-                                            _customAlarmBytes = null;
-                                          });
-                                          widget.prefs.remove('custom_alarm_filename');
-                                          widget.prefs.remove('custom_alarm_path');
-                                          widget.prefs.remove(_customAlarmDataKey);
-                                        },
+                                    Text(_t('alarm_volume'), style: labelStyle),
+                                    Text(
+                                      '${(_alarmVolume * 100).round()}%',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        color: isDark ? Colors.white70 : Colors.black87,
                                       ),
-                                    TextButton.icon(
-                                      icon: const Icon(Icons.folder_open, size: 18),
-                                      label: Text(
-                                        localAlarmFileName != null ? _t('alarm_change_file') : _t('alarm_custom_pick'),
-                                        style: const TextStyle(fontSize: 12),
-                                      ),
-                                      onPressed: () async {
-                                        final result = await FilePicker.platform.pickFiles(
-                                          type: FileType.custom,
-                                          allowedExtensions: ['mp3', 'wav', 'ogg', 'aac'],
-                                          withData: kIsWeb,
-                                        );
-                                        if (result == null || result.files.isEmpty) return;
-                                        final file = result.files.single;
-
-                                        if (kIsWeb) {
-                                          final bytes = file.bytes;
-                                          if (bytes == null) return;
-                                          if (bytes.length > _maxWebAlarmBytes) {
-                                            _showSnackBar(_t('alarm_file_too_large'));
-                                            return;
-                                          }
-                                          try {
-                                            await widget.prefs.setString(_customAlarmDataKey, base64Encode(bytes));
-                                          } catch (e) {
-                                            debugPrint('Failed to save alarm file: $e');
-                                            _showSnackBar(_t('alarm_file_too_large'));
-                                            return;
-                                          }
-                                        }
-
-                                        setDialogState(() {
-                                          localAlarmFileName = file.name;
-                                        });
-
-                                        if (!mounted) return;
-                                        setState(() {
-                                          _customAlarmFileName = file.name;
-                                          _customAlarmPath = file.path;
-                                          _customAlarmBytes = file.bytes;
-                                        });
-
-                                        widget.prefs.setString('custom_alarm_filename', file.name);
-                                        if (file.path != null) {
-                                          widget.prefs.setString('custom_alarm_path', file.path!);
-                                        }
-                                      },
                                     ),
                                   ],
                                 ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 18),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                _t('alarm_volume'),
-                                style: TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.bold),
-                              ),
-                              Text(
-                                '${(localVolume * 100).round()}%',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  color: isDark ? Colors.white70 : Colors.black87,
-                                ),
-                              ),
-                            ],
-                          ),
-                          Row(
-                            children: [
-                              Icon(
-                                localVolume == 0
-                                    ? Icons.volume_off_rounded
-                                    : (localVolume < 0.5 ? Icons.volume_down_rounded : Icons.volume_up_rounded),
-                                size: 20,
-                                color: isDark ? Colors.white70 : Colors.black54,
-                              ),
-                              Expanded(
-                                child: Slider(
-                                  value: localVolume,
-                                  min: 0,
-                                  max: 1,
-                                  divisions: 20,
-                                  label: '${(localVolume * 100).round()}%',
-                                  onChanged: (value) {
-                                    setDialogState(() {
-                                      localVolume = value;
-                                    });
-                                    setState(() {
-                                      _alarmVolume = value;
-                                    });
-                                    // Volume langsung ikut berubah kalau tes suara lagi bunyi.
-                                    _audioPlayer?.setVolume(value);
-                                  },
-                                  onChangeEnd: (value) {
-                                    _saveAlarmSettings();
-                                  },
-                                ),
-                              ),
-                              TextButton.icon(
-                                icon: const Icon(Icons.play_arrow_rounded, size: 18),
-                                label: Text(_t('alarm_test'), style: const TextStyle(fontSize: 12)),
-                                onPressed: () async {
-                                  _alarmVolume = localVolume;
-                                  _isPreviewingAlarm = true;
-                                  await _previewAlarmSound();
-                                },
-                              ),
-                            ],
-                          ),
+                                Row(
+                                  children: [
+                                    Icon(
+                                      _alarmVolume == 0
+                                          ? Icons.volume_off_rounded
+                                          : (_alarmVolume < 0.5 ? Icons.volume_down_rounded : Icons.volume_up_rounded),
+                                      size: 20,
+                                      color: isDark ? Colors.white70 : Colors.black54,
+                                    ),
+                                    Expanded(
+                                      child: Slider(
+                                        value: _alarmVolume,
+                                        min: 0,
+                                        max: 1,
+                                        divisions: 20,
+                                        label: '${(_alarmVolume * 100).round()}%',
+                                        onChanged: (value) {
+                                          update(() => _alarmVolume = value);
+                                          // Volume langsung ikut berubah kalau tes suara lagi bunyi.
+                                          _audioPlayer?.setVolume(value);
+                                        },
+                                        onChangeEnd: (_) => _saveAlarmSettings(),
+                                      ),
+                                    ),
                                   ],
                                 ),
+                              ],
+                            ),
                           ),
                         ),
                         const SizedBox(height: 12),
@@ -1684,7 +1619,6 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
                         ),
                       ],
                     ),
-                    ),
                   );
                 },
               ),
@@ -1702,6 +1636,242 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
         _audioPlayer?.stop();
       }
     });
+  }
+
+  /// Satu baris waktu sholat di dialog alarm: nama, ringkasan, saklar,
+  /// dan (kalau dibuka) pilihan dering/getar serta nadanya.
+  Widget _buildPrayerAlarmTile({
+    required String prayerKey,
+    required bool isDark,
+    required bool expanded,
+    required VoidCallback onToggleExpanded,
+    required void Function(VoidCallback) update,
+  }) {
+    final c = _alarmConfigs[prayerKey]!;
+    final primary = Theme.of(context).colorScheme.primary;
+    final mutedColor = isDark ? Colors.white54 : Colors.black54;
+    final summary = !c.enabled
+        ? _t('alarm_off')
+        : c.mode == 'vibrate'
+            ? _t('alarm_mode_vibrate')
+            : '${_t('alarm_mode_ring')} · ${c.fileName ?? _t('alarm_default_tone')}';
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 220),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1B1B1D) : const Color(0xFFF5F5F7),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: expanded ? primary.withValues(alpha: 0.45) : (isDark ? Colors.white12 : Colors.black12),
+        ),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(12),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            InkWell(
+              onTap: onToggleExpanded,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(14, 8, 6, 8),
+                child: Row(
+                  children: [
+                    Icon(
+                      !c.enabled
+                          ? Icons.alarm_off_rounded
+                          : (c.mode == 'vibrate' ? Icons.vibration_rounded : Icons.notifications_active_rounded),
+                      size: 18,
+                      color: c.enabled ? primary : mutedColor,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _t(prayerKey),
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: isDark ? Colors.white : Colors.black87,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            summary,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(fontSize: 12, color: mutedColor),
+                          ),
+                        ],
+                      ),
+                    ),
+                    AnimatedRotation(
+                      turns: expanded ? 0.5 : 0,
+                      duration: const Duration(milliseconds: 220),
+                      child: Icon(Icons.expand_more_rounded, size: 20, color: mutedColor),
+                    ),
+                    Switch.adaptive(
+                      value: c.enabled,
+                      onChanged: (v) {
+                        update(() => c.enabled = v);
+                        _saveAlarmSettings();
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            AnimatedSize(
+              duration: const Duration(milliseconds: 240),
+              curve: Curves.easeOutCubic,
+              alignment: Alignment.topCenter,
+              child: !expanded
+                  ? const SizedBox(width: double.infinity)
+                  : Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _AnimatedSegmentedToggle<String>(
+                            isDark: isDark,
+                            value: c.mode,
+                            options: [
+                              _SegmentOption(value: 'ring', label: _t('alarm_mode_ring'), icon: Icons.notifications_active_rounded),
+                              _SegmentOption(value: 'vibrate', label: _t('alarm_mode_vibrate'), icon: Icons.vibration_rounded),
+                            ],
+                            onChanged: (value) {
+                              update(() => c.mode = value);
+                              _saveAlarmSettings();
+                              if (value == 'vibrate') HapticFeedback.vibrate();
+                            },
+                          ),
+                          if (c.mode == 'ring') ...[
+                            const SizedBox(height: 10),
+                            _buildRingtoneCard(prayerKey: prayerKey, isDark: isDark, update: update),
+                          ],
+                        ],
+                      ),
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Kartu nada dering: nama file dapat satu baris penuh, tombol aksi di bawahnya
+  /// supaya teks tidak terjepit tombol.
+  Widget _buildRingtoneCard({
+    required String prayerKey,
+    required bool isDark,
+    required void Function(VoidCallback) update,
+  }) {
+    final c = _alarmConfigs[prayerKey]!;
+    final primary = Theme.of(context).colorScheme.primary;
+    final hasFile = c.fileName != null;
+    final buttonStyle = OutlinedButton.styleFrom(
+      foregroundColor: isDark ? Colors.white : Colors.black87,
+      side: BorderSide(color: isDark ? Colors.white24 : Colors.black12),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+      textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+    );
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF242426) : Colors.white,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: primary.withValues(alpha: hasFile ? 0.16 : 0.08),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(
+                  hasFile ? Icons.audio_file_rounded : Icons.music_note_rounded,
+                  size: 18,
+                  color: primary,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      c.fileName ?? _t('alarm_default_tone'),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: isDark ? Colors.white : Colors.black87,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      hasFile ? _t('alarm_selected_file') : _t('alarm_builtin_desc'),
+                      style: TextStyle(fontSize: 11, color: isDark ? Colors.white54 : Colors.black54),
+                    ),
+                  ],
+                ),
+              ),
+              if (hasFile)
+                IconButton(
+                  icon: const Icon(Icons.close_rounded, size: 18),
+                  tooltip: _t('alarm_remove_file'),
+                  color: isDark ? Colors.white54 : Colors.black45,
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () => update(() => _clearAlarmFile(prayerKey)),
+                ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  style: buttonStyle,
+                  icon: const Icon(Icons.folder_open_rounded, size: 16),
+                  label: Text(
+                    hasFile ? _t('alarm_change_file') : _t('alarm_custom_pick'),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  onPressed: () async {
+                    await _pickAlarmFile(prayerKey);
+                    update(() {});
+                  },
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton.icon(
+                  style: buttonStyle,
+                  icon: const Icon(Icons.play_arrow_rounded, size: 16),
+                  label: Text(_t('alarm_test'), maxLines: 1, overflow: TextOverflow.ellipsis),
+                  onPressed: () {
+                    _isPreviewingAlarm = true;
+                    _previewAlarmSound(prayerKey);
+                  },
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 
   void _openUiSizeDialog() {
@@ -2248,7 +2418,9 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
   }
 
   Widget _buildTimeCard(String name, DateTime time, String prayerKey, Color cardBg, Color textColor, bool isDark) {
-    final alarmActive = _alarmPrayerTimes.contains(prayerKey);
+    final alarmConfig = _alarmConfigs[prayerKey]!;
+    final alarmActive = alarmConfig.enabled;
+    final alarmVibrate = alarmConfig.mode == 'vibrate';
     final iconColor = alarmActive
         ? Theme.of(context).colorScheme.primary
         : isDark
@@ -2298,11 +2470,7 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
                     borderRadius: BorderRadius.circular(12),
                     onTap: () {
                       setState(() {
-                        if (alarmActive) {
-                          _alarmPrayerTimes.remove(prayerKey);
-                        } else {
-                          _alarmPrayerTimes.add(prayerKey);
-                        }
+                        alarmConfig.enabled = !alarmActive;
                         _saveAlarmSettings();
                       });
                     },
@@ -2326,8 +2494,10 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
                           child: FadeTransition(opacity: anim, child: child),
                         ),
                         child: Icon(
-                          alarmActive ? Icons.alarm_on_rounded : Icons.alarm_outlined,
-                          key: ValueKey(alarmActive),
+                          !alarmActive
+                              ? Icons.alarm_outlined
+                              : (alarmVibrate ? Icons.vibration_rounded : Icons.alarm_on_rounded),
+                          key: ValueKey('$alarmActive$alarmVibrate'),
                           color: iconColor,
                           size: 20,
                         ),
@@ -2522,6 +2692,15 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
       },
     );
   }
+}
+
+/// Setelan alarm untuk satu waktu sholat.
+class _PrayerAlarmConfig {
+  bool enabled = true;
+  String mode = 'ring'; // 'ring' atau 'vibrate'
+  String? fileName;
+  String? filePath;
+  Uint8List? fileBytes;
 }
 
 class _SegmentOption<T> {
