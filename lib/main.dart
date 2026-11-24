@@ -140,7 +140,7 @@ final Map<String, Map<String, String>> _translations = {
     'alarm_remove_file': 'Hapus nada dering',
     'alarm_volume': 'Volume Alarm',
     'alarm_test': 'Tes Suara',
-    'alarm_hint': 'Ketuk ikon alarm di samping waktu sholat untuk ganti: Dering → Getar → Mati. Tekan lama ikonnya untuk pilih nada dering sholat itu.',
+    'alarm_hint': 'Ketuk ikon alarm di samping waktu sholat untuk ganti: Dering → Getar → Mati. Tekan lama ikonnya untuk pilih nada dering dan volume.',
     'alarm_play_error': 'Gagal memutar suara alarm. Coba pilih ulang file-nya.',
     'alarm_file_too_large': 'File terlalu besar. Maksimal 2 MB untuk versi web.',
     'alarm_select_prayers': 'Pilih waktu sholat',
@@ -195,7 +195,7 @@ final Map<String, Map<String, String>> _translations = {
     'alarm_remove_file': 'Remove ringtone',
     'alarm_volume': 'Alarm Volume',
     'alarm_test': 'Test Sound',
-    'alarm_hint': 'Tap the alarm icon beside a prayer time to switch: Ring → Vibrate → Off. Long-press the icon to choose that prayer\'s ringtone.',
+    'alarm_hint': 'Tap the alarm icon beside a prayer time to switch: Ring → Vibrate → Off. Long-press the icon to choose the ringtone and volume.',
     'alarm_play_error': 'Failed to play the alarm sound. Try selecting the file again.',
     'alarm_file_too_large': 'File is too large. Maximum 2 MB on the web version.',
     'alarm_select_prayers': 'Select prayer times',
@@ -248,7 +248,7 @@ final Map<String, Map<String, String>> _translations = {
     'alarm_remove_file': '着信音を削除',
     'alarm_volume': 'アラーム音量',
     'alarm_test': 'サウンドをテスト',
-    'alarm_hint': '礼拝時間の横のアラームアイコンをタップすると ベル → バイブ → オフ と切り替わります。長押しでその礼拝の着信音を選べます。',
+    'alarm_hint': '礼拝時間の横のアラームアイコンをタップすると ベル → バイブ → オフ と切り替わります。長押しで着信音と音量を設定できます。',
     'alarm_play_error': 'アラーム音の再生に失敗しました。ファイルを選び直してください。',
     'alarm_file_too_large': 'ファイルが大きすぎます。Web版では最大2MBです。',
     'alarm_select_prayers': '礼拝時間を選択',
@@ -302,7 +302,7 @@ final Map<String, Map<String, String>> _translations = {
     'alarm_remove_file': '删除铃声',
     'alarm_volume': '闹钟音量',
     'alarm_test': '测试声音',
-    'alarm_hint': '点击祷告时间旁的闹钟图标可切换：响铃 → 振动 → 关闭。长按图标可为该祷告选择铃声。',
+    'alarm_hint': '点击祷告时间旁的闹钟图标可切换：响铃 → 振动 → 关闭。长按图标可选择铃声和音量。',
     'alarm_play_error': '播放闹钟声音失败，请重新选择文件。',
     'alarm_file_too_large': '文件过大。网页版最大为 2 MB。',
     'alarm_select_prayers': '选择祷告时间',
@@ -1598,7 +1598,6 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
   /// Menu Alarm di bawah: cuma cara pakai dan volume.
   void _openAlarmSettingsBottomSheet() {
     _showAlarmDialog(builder: (context, isDark, update) {
-      final labelStyle = TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.bold);
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1607,43 +1606,6 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
           Text(
             _t('alarm_hint'),
             style: TextStyle(color: isDark ? Colors.white70 : Colors.black54, fontSize: 13, height: 1.4),
-          ),
-          const SizedBox(height: 18),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(_t('alarm_volume'), style: labelStyle),
-              Text(
-                '${(_alarmVolume * 100).round()}%',
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: isDark ? Colors.white70 : Colors.black87),
-              ),
-            ],
-          ),
-          Row(
-            children: [
-              Icon(
-                _alarmVolume == 0
-                    ? Icons.volume_off_rounded
-                    : (_alarmVolume < 0.5 ? Icons.volume_down_rounded : Icons.volume_up_rounded),
-                size: 20,
-                color: isDark ? Colors.white70 : Colors.black54,
-              ),
-              Expanded(
-                child: Slider(
-                  value: _alarmVolume,
-                  min: 0,
-                  max: 1,
-                  divisions: 20,
-                  label: '${(_alarmVolume * 100).round()}%',
-                  onChanged: (value) {
-                    update(() => _alarmVolume = value);
-                    // Volume langsung ikut berubah kalau tes suara lagi bunyi.
-                    _audioPlayer?.setVolume(value);
-                  },
-                  onChangeEnd: (_) => _saveAlarmSettings(),
-                ),
-              ),
-            ],
           ),
         ],
       );
@@ -1685,12 +1647,65 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
                 ? const SizedBox(width: double.infinity)
                 : Padding(
                     padding: const EdgeInsets.only(top: 12),
-                    child: _buildRingtoneCard(prayerKey: prayerKey, isDark: isDark, update: update),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildRingtoneCard(prayerKey: prayerKey, isDark: isDark, update: update),
+                        _buildAlarmVolumeControl(isDark: isDark, update: update),
+                      ],
+                    ),
                   ),
           ),
         ],
       );
     });
+  }
+
+  /// Volume alarm (satu untuk semua waktu sholat), tampil di bawah pilihan nada.
+  Widget _buildAlarmVolumeControl({required bool isDark, required void Function(VoidCallback) update}) {
+    final labelStyle = TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.bold);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 16),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(_t('alarm_volume'), style: labelStyle),
+            Text(
+              '${(_alarmVolume * 100).round()}%',
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: isDark ? Colors.white70 : Colors.black87),
+            ),
+          ],
+        ),
+        Row(
+          children: [
+            Icon(
+              _alarmVolume == 0
+                  ? Icons.volume_off_rounded
+                  : (_alarmVolume < 0.5 ? Icons.volume_down_rounded : Icons.volume_up_rounded),
+              size: 20,
+              color: isDark ? Colors.white70 : Colors.black54,
+            ),
+            Expanded(
+              child: Slider(
+                value: _alarmVolume,
+                min: 0,
+                max: 1,
+                divisions: 20,
+                label: '${(_alarmVolume * 100).round()}%',
+                onChanged: (value) {
+                  update(() => _alarmVolume = value);
+                  // Volume langsung ikut berubah kalau tes suara lagi bunyi.
+                  _audioPlayer?.setVolume(value);
+                },
+                onChangeEnd: (_) => _saveAlarmSettings(),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
   }
 
   /// Kartu nada dering: nama file dapat satu baris penuh, tombol aksi di bawahnya
