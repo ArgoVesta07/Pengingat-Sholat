@@ -2282,83 +2282,49 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
                 final shift = -2.2 + 4.4 * progress;
 
                 if (!isDark) {
-                  // FIX NATURALNESS: versi lama pakai SATU gradient 5-stop dengan
-                  // alpha tinggi (cyan 0.10, putih 0.35, pink 0.10) sekaligus,
-                  // jadi 3 warna itu numpuk & nongol bareng -> kesannya "prisma"/
-                  // pelangi, nggak natural. Sekarang strukturnya disamain kayak
-                  // versi mode gelap: dipecah jadi 3 layer terpisah (fringe cyan
-                  // tipis, band utama hangat, fringe pink tipis), masing-masing
-                  // alpha-nya jauh lebih rendah (mirip proporsi di mode gelap:
-                  // 0.06 buat fringe, ~0.16 buat band utama) -- hasilnya cuma
-                  // kerasa "kilau kaca" tipis lewat, bukan pelangi mencolok.
-                  final tintedBg = Color.lerp(cardBg, textColor, 0.035)!;
-                  final tintedBorder = textColor.withValues(alpha: 0.14);
-                  final cyanShiftLight = shift - 0.05;
-                  final magentaShiftLight = shift + 0.05;
+                  // Mode terang: kilau harus lebih TERANG dari dasar kartu.
+                  // Versi lama pakai warna teks (hitam) transparan, jadi yang
+                  // lewat malah kelihatan kayak bayangan abu-abu. Sekarang dasar
+                  // kartu dikasih tint abu-biru lembut + band putih yang lewat,
+                  // jadi efeknya kilau kaca seperti di mode gelap.
+                  final cyanShiftLight = shift - 0.06;
+                  final magentaShiftLight = shift + 0.06;
+
+                  Widget sweep(double s, List<double> stops, Color c) => Positioned.fill(
+                        child: IgnorePointer(
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment(-1 + s, -1),
+                                end: Alignment(1 + s, 1),
+                                stops: stops,
+                                colors: [c.withValues(alpha: 0), c, c.withValues(alpha: 0)],
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
 
                   return Container(
                     decoration: BoxDecoration(
-                      color: tintedBg,
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: tintedBorder, width: 1.2),
+                      border: Border.all(color: Colors.black.withValues(alpha: 0.07), width: 1.2),
+                      gradient: const LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [Color(0xFFE9ECF2), Color(0xFFF3F4F7)],
+                      ),
                     ),
                     child: Stack(
                       children: [
+                        // Kilau di belakang konten biar teks tetap tajam.
+                        sweep(cyanShiftLight, const [0.4, 0.5, 0.6],
+                            const Color(0xFF7FD8F0).withValues(alpha: 0.10 * envelope)),
+                        sweep(shift, const [0.32, 0.5, 0.68],
+                            Colors.white.withValues(alpha: 0.9 * envelope)),
+                        sweep(magentaShiftLight, const [0.4, 0.5, 0.6],
+                            const Color(0xFFF5A3CF).withValues(alpha: 0.08 * envelope)),
                         child!,
-                        Positioned.fill(
-                          child: IgnorePointer(
-                            child: DecoratedBox(
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  begin: Alignment(-1 + cyanShiftLight, -1),
-                                  end: Alignment(1 + cyanShiftLight, 1),
-                                  stops: const [0.4, 0.5, 0.6],
-                                  colors: [
-                                    Colors.transparent,
-                                    const Color(0xFF8FE9FF).withValues(alpha: 0.05 * envelope),
-                                    Colors.transparent,
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                        Positioned.fill(
-                          child: IgnorePointer(
-                            child: DecoratedBox(
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  begin: Alignment(-1 + shift, -1),
-                                  end: Alignment(1 + shift, 1),
-                                  stops: const [0.35, 0.5, 0.65],
-                                  colors: [
-                                    Colors.transparent,
-                                    textColor.withValues(alpha: 0.16 * envelope),
-                                    Colors.transparent,
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                        Positioned.fill(
-                          child: IgnorePointer(
-                            child: DecoratedBox(
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  begin: Alignment(-1 + magentaShiftLight, -1),
-                                  end: Alignment(1 + magentaShiftLight, 1),
-                                  stops: const [0.4, 0.5, 0.6],
-                                  colors: [
-                                    Colors.transparent,
-                                    const Color(0xFFFF9ED2).withValues(alpha: 0.05 * envelope),
-                                    Colors.transparent,
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
                       ],
                     ),
                   );
