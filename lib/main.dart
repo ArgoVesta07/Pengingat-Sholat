@@ -14,6 +14,51 @@ import 'package:just_audio/just_audio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+/// Nada alarm bawaan: chime 2 nada lembut (WAV 16-bit mono), dibuat di kode
+/// supaya tidak perlu file aset.
+Uint8List _buildDefaultToneWav() {
+  const sampleRate = 22050;
+  const noteSeconds = 0.55;
+  const notes = [880.0, 659.25, 880.0, 659.25]; // A5 - E5, diulang 2x
+  final samplesPerNote = (sampleRate * noteSeconds).round();
+  final totalSamples = samplesPerNote * notes.length;
+  final data = ByteData(44 + totalSamples * 2);
+
+  void writeStr(int offset, String v) {
+    for (var i = 0; i < v.length; i++) {
+      data.setUint8(offset + i, v.codeUnitAt(i));
+    }
+  }
+
+  writeStr(0, 'RIFF');
+  data.setUint32(4, 36 + totalSamples * 2, Endian.little);
+  writeStr(8, 'WAVE');
+  writeStr(12, 'fmt ');
+  data.setUint32(16, 16, Endian.little);
+  data.setUint16(20, 1, Endian.little); // PCM
+  data.setUint16(22, 1, Endian.little); // mono
+  data.setUint32(24, sampleRate, Endian.little);
+  data.setUint32(28, sampleRate * 2, Endian.little);
+  data.setUint16(32, 2, Endian.little);
+  data.setUint16(34, 16, Endian.little);
+  writeStr(36, 'data');
+  data.setUint32(40, totalSamples * 2, Endian.little);
+
+  var offset = 44;
+  for (final freq in notes) {
+    for (var n = 0; n < samplesPerNote; n++) {
+      final t = n / sampleRate;
+      final attack = math.min(1.0, t / 0.01);
+      final decay = math.exp(-4.0 * t);
+      final wave = math.sin(2 * math.pi * freq * t) + 0.3 * math.sin(4 * math.pi * freq * t);
+      final sample = (wave / 1.3 * attack * decay * 0.6 * 32767).round();
+      data.setInt16(offset, sample, Endian.little);
+      offset += 2;
+    }
+  }
+  return data.buffer.asUint8List();
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final prefs = await SharedPreferences.getInstance();
@@ -62,6 +107,7 @@ final Map<String, Map<String, String>> _translations = {
     'alarm_selected_file': 'File terpilih',
     'alarm_current_ringtone': 'Nada Dering Saat Ini',
     'alarm_no_file_selected': 'Belum ada file dipilih',
+    'alarm_default_tone': 'Nada bawaan',
     'alarm_change_file': 'Ganti File',
     'alarm_remove_file': 'Hapus nada dering',
     'alarm_volume': 'Volume Alarm',
@@ -114,6 +160,7 @@ final Map<String, Map<String, String>> _translations = {
     'alarm_selected_file': 'Selected file',
     'alarm_current_ringtone': 'Current Ringtone',
     'alarm_no_file_selected': 'No file selected',
+    'alarm_default_tone': 'Default tone',
     'alarm_change_file': 'Change File',
     'alarm_remove_file': 'Remove ringtone',
     'alarm_volume': 'Alarm Volume',
@@ -164,6 +211,7 @@ final Map<String, Map<String, String>> _translations = {
     'alarm_selected_file': '選択されたファイル',
     'alarm_current_ringtone': '現在の着信音',
     'alarm_no_file_selected': 'ファイルが選択されていません',
+    'alarm_default_tone': 'デフォルトの音',
     'alarm_change_file': 'ファイルを変更',
     'alarm_remove_file': '着信音を削除',
     'alarm_volume': 'アラーム音量',
@@ -215,6 +263,7 @@ final Map<String, Map<String, String>> _translations = {
     'alarm_selected_file': '已选择文件',
     'alarm_current_ringtone': '当前铃声',
     'alarm_no_file_selected': '尚未选择文件',
+    'alarm_default_tone': '默认铃声',
     'alarm_change_file': '更换文件',
     'alarm_remove_file': '删除铃声',
     'alarm_volume': '闹钟音量',
@@ -674,6 +723,9 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
   Set<String> _alarmPrayerTimes = {'fajr', 'dhuhr', 'asr', 'maghrib', 'isha'};
   AudioPlayer? _audioPlayer;
   DateTime? _lastAlarmPlayedAt;
+  DateTime? _lastAlarmCheckAt;
+  bool _isPreviewingAlarm = false;
+  static final Uint8List _defaultToneBytes = _buildDefaultToneWav();
   DateTime _lastCalculatedDate = DateTime.now();
   late AnimationController _glowPulseController;
   static const int _shineCycleMs = 5000;
@@ -792,7 +844,9 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
       } else if (_customAlarmPath != null) {
         await _audioPlayer?.setFilePath(_customAlarmPath!);
       } else {
-        return;
+        // Belum pilih file: pakai nada bawaan biar alarm tetap bunyi.
+        final uri = Uri.dataFromBytes(_defaultToneBytes, mimeType: 'audio/wav');
+        await _audioPlayer?.setAudioSource(AudioSource.uri(uri));
       }
       await _audioPlayer?.setVolume(_alarmVolume);
       await _audioPlayer?.play();
@@ -803,7 +857,10 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
   }
 
   void _maybePlayPrayerAlarm(DateTime now) {
-    if (_alarmPrayerTimes.isEmpty) return;
+    if (_alarmPrayerTimes.isEmpty) {
+      _lastAlarmCheckAt = now;
+      return;
+    }
 
     final prayerTimes = {
       'fajr': _prayerTimes.fajr,
@@ -813,12 +870,20 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
       'isha': _prayerTimes.isha,
     };
 
+    // Bunyi kalau waktu sholat "terlewati" sejak pengecekan terakhir.
+    // Browser bisa memperlambat timer di tab background (sampai 1x/menit),
+    // jadi jendela 0-2 detik yang lama sering kelewat.
+    final lastCheck = _lastAlarmCheckAt ?? now.subtract(const Duration(seconds: 2));
+    _lastAlarmCheckAt = now;
+
     for (final entry in prayerTimes.entries) {
       if (!_alarmPrayerTimes.contains(entry.key)) continue;
       final target = entry.value;
-      final diffSeconds = now.difference(target).inSeconds;
-      if (diffSeconds >= 0 && diffSeconds <= 2) {
+      final crossed = target.isAfter(lastCheck) && !target.isAfter(now);
+      final stillFresh = now.difference(target) <= const Duration(minutes: 5);
+      if (crossed && stillFresh) {
         if (_lastAlarmPlayedAt == null || now.difference(_lastAlarmPlayedAt!).inSeconds >= 60) {
+          _isPreviewingAlarm = false;
           _playAlarmSound();
           _lastAlarmPlayedAt = now;
         }
@@ -1301,7 +1366,7 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
   }
 
   void _openAlarmSettingsBottomSheet() {
-    showGeneralDialog(
+    showGeneralDialog<void>(
       context: context,
       barrierDismissible: true,
       barrierLabel: 'Dismiss',
@@ -1411,7 +1476,7 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
                                       : (isDark ? Colors.white38 : Colors.black38),
                                 ),
                                 title: Text(
-                                  localAlarmFileName ?? _t('alarm_no_file_selected'),
+                                  localAlarmFileName ?? _t('alarm_default_tone'),
                                   style: TextStyle(
                                     fontWeight: FontWeight.w600,
                                     fontSize: 13,
@@ -1555,12 +1620,11 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
                               TextButton.icon(
                                 icon: const Icon(Icons.play_arrow_rounded, size: 18),
                                 label: Text(_t('alarm_test'), style: const TextStyle(fontSize: 12)),
-                                onPressed: localAlarmFileName == null
-                                    ? null
-                                    : () async {
-                                        _alarmVolume = localVolume;
-                                        await _previewAlarmSound();
-                                      },
+                                onPressed: () async {
+                                  _alarmVolume = localVolume;
+                                  _isPreviewingAlarm = true;
+                                  await _previewAlarmSound();
+                                },
                               ),
                             ],
                           ),
@@ -1601,7 +1665,13 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
       transitionBuilder: (context, anim1, anim2, child) {
         return _buildSlideUpDialogTransition(context, anim1, anim2, child);
       },
-    );
+    ).then((_) {
+      // Tes suara berhenti begitu dialog alarm ditutup.
+      if (_isPreviewingAlarm) {
+        _isPreviewingAlarm = false;
+        _audioPlayer?.stop();
+      }
+    });
   }
 
   void _openUiSizeDialog() {
@@ -2312,18 +2382,18 @@ class _JadwalSholatScreenState extends State<JadwalSholatScreen> with SingleTick
                       gradient: const LinearGradient(
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
-                        colors: [Color(0xFFE9ECF2), Color(0xFFF3F4F7)],
+                        colors: [Color(0xFFE4E8EF), Color(0xFFF1F2F6)],
                       ),
                     ),
                     child: Stack(
                       children: [
                         // Kilau di belakang konten biar teks tetap tajam.
                         sweep(cyanShiftLight, const [0.4, 0.5, 0.6],
-                            const Color(0xFF7FD8F0).withValues(alpha: 0.10 * envelope)),
-                        sweep(shift, const [0.32, 0.5, 0.68],
-                            Colors.white.withValues(alpha: 0.9 * envelope)),
+                            const Color(0xFF7FD8F0).withValues(alpha: 0.18 * envelope)),
+                        sweep(shift, const [0.3, 0.5, 0.7],
+                            Colors.white.withValues(alpha: envelope)),
                         sweep(magentaShiftLight, const [0.4, 0.5, 0.6],
-                            const Color(0xFFF5A3CF).withValues(alpha: 0.08 * envelope)),
+                            const Color(0xFFF5A3CF).withValues(alpha: 0.14 * envelope)),
                         child!,
                       ],
                     ),
